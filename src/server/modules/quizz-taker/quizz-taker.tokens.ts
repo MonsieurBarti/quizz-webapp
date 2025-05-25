@@ -1,0 +1,5 @@
+export const QUIZZ_TAKER_TOKENS = {
+	ANSWER_READER: Symbol.for('ANSWER_READER'),
+	QUIZZ_READER: Symbol.for('QUIZZ_READER'),
+	QUESTION_READER: Symbol.for('QUESTION_READER'),
+};

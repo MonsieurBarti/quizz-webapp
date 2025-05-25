@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "attempt_player_quizz_idx" ON "quizz_webapp_attempt" USING btree ("player_id","quizz_id");
