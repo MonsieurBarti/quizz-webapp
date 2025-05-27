@@ -43,7 +43,7 @@ export const quizzRouter = createTRPCRouter({
 			};
 		}),
 	updateQuizz: protectedProcedure
-		.input(UpdateQuizzCommandProps)
+		.input(UpdateQuizzCommandProps.omit({ context: true }))
 		.output(QuizzOutput)
 		.mutation(async ({ input, ctx }) => {
 			const updateQuizzCommandHandler = quizzCreatorContainer.get<UpdateQuizzCommandHandler>(
@@ -64,17 +64,19 @@ export const quizzRouter = createTRPCRouter({
 				createdBy: quizz.createdBy,
 			};
 		}),
-	deleteQuizz: protectedProcedure.input(DeleteQuizzCommandProps).mutation(async ({ input, ctx }) => {
-		const deleteQuizzCommandHandler = quizzCreatorContainer.get<DeleteQuizzCommandHandler>(
-			QUIZZ_CREATOR_TOKENS.DELETE_QUIZZ_COMMAND_HANDLER,
-		);
+	deleteQuizz: protectedProcedure
+		.input(DeleteQuizzCommandProps.omit({ context: true }))
+		.mutation(async ({ input, ctx }) => {
+			const deleteQuizzCommandHandler = quizzCreatorContainer.get<DeleteQuizzCommandHandler>(
+				QUIZZ_CREATOR_TOKENS.DELETE_QUIZZ_COMMAND_HANDLER,
+			);
 
-		const command = new DeleteQuizzCommand({
-			...input,
-			context: { userId: ctx.session.user.id },
-		});
-		await deleteQuizzCommandHandler.execute(command);
-	}),
+			const command = new DeleteQuizzCommand({
+				...input,
+				context: { userId: ctx.session.user.id },
+			});
+			await deleteQuizzCommandHandler.execute(command);
+		}),
 	getAllQuizz: protectedProcedure.output(QuizzOutput.array()).query(async ({ ctx }) => {
 		const results = await db.query.quizz.findMany({ where: eq(quizz.createdBy, ctx.session.user.id) });
 		return results.map(quizz => ({

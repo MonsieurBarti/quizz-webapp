@@ -17,7 +17,7 @@ export class SqlQuestionRepository implements QuestionRepository {
 
 	async findByQuizzId({ quizzId }: { quizzId: string }): Promise<Question[]> {
 		const results = await db.query.question.findMany({
-			where: eq(question.quizId, quizzId),
+			where: eq(question.quizzId, quizzId),
 			orderBy: (questions, { asc }) => [asc(questions.order)],
 		});
 
@@ -33,7 +33,7 @@ export class SqlQuestionRepository implements QuestionRepository {
 			.onConflictDoUpdate({
 				target: question.id,
 				set: {
-					quizId: questionPersistence.quizId,
+					quizzId: questionPersistence.quizzId,
 					text: questionPersistence.text,
 					order: questionPersistence.order,
 					imageUrl: questionPersistence.imageUrl,
