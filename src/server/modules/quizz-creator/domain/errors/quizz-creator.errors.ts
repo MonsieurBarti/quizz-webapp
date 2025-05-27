@@ -11,16 +11,37 @@ export class QuizzNotFound extends QuizzCreatorError {
 	}
 }
 
-export class QuestionNotFound extends Error {
+export class UnauthorizedQuizzAccess extends QuizzCreatorError {
+	constructor(id: string, userId: string) {
+		super(`User ${userId} is not authorized to access quizz ${id}`);
+		this.name = 'UnauthorizedQuizzAccess';
+	}
+}
+
+export class QuestionNotFound extends QuizzCreatorError {
 	constructor(questionId: string) {
 		super(`Question with ID "${questionId}" not found.`);
 		this.name = 'QuestionNotFound';
 	}
 }
 
-export class AnswerNotFound extends Error {
+export class UnauthorizedQuestionAccess extends QuizzCreatorError {
+	constructor(questionId: string, userId: string) {
+		super(`User ${userId} is not authorized to access question ${questionId}`);
+		this.name = 'UnauthorizedQuestionAccess';
+	}
+}
+
+export class AnswerNotFound extends QuizzCreatorError {
 	constructor(answerId: string) {
 		super(`Answer with ID "${answerId}" not found.`);
 		this.name = 'AnswerNotFound';
+	}
+}
+
+export class UnauthorizedAnswerAccess extends QuizzCreatorError {
+	constructor(answerId: string, userId: string) {
+		super(`User ${userId} is not authorized to access answer ${answerId}`);
+		this.name = 'UnauthorizedAnswerAccess';
 	}
 }

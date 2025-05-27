@@ -1,7 +1,10 @@
 import { createTRPCRouter, protectedProcedure } from '@/server/api/trpc';
 import { quizzCreatorContainer } from '../../quizz-creator.container';
 import { QUIZZ_CREATOR_TOKENS } from '../../quizz-creator.tokens';
-import { AnswerOutput } from './types';
+import { AnswerOutput, GetAllAnswersQueryProps, GetAnswerByIdQueryProps } from './types';
+import { db } from '@/server/db';
+import { eq } from 'drizzle-orm';
+import { answer } from '@/server/db/schema';
 
 // Answer Command and Query Imports
 import {
@@ -19,27 +22,20 @@ import {
 	DeleteAnswerCommandHandler,
 	DeleteAnswerCommandProps,
 } from '../../application/commands/answer/delete-answer/delete-answer.command';
-import {
-	GetAllAnswersQuery,
-	GetAllAnswersQueryHandler,
-	GetAllAnswersQueryProps,
-} from '../../application/queries/answer/get-all-answers/get-all-answers.query';
-import {
-	GetAnswerByIdQuery,
-	GetAnswerByIdQueryHandler,
-	GetAnswerByIdQueryProps,
-} from '../../application/queries/answer/get-answer-by-id/get-answer-by-id.query';
 
 export const answerRouter = createTRPCRouter({
 	createAnswer: protectedProcedure
-		.input(CreateAnswerCommandProps.omit({ id: true }))
+		.input(CreateAnswerCommandProps.omit({ id: true, context: true }))
 		.output(AnswerOutput)
-		.mutation(async ({ input }) => {
+		.mutation(async ({ input, ctx }) => {
 			const createAnswerCommandHandler = quizzCreatorContainer.get<CreateAnswerCommandHandler>(
 				QUIZZ_CREATOR_TOKENS.CREATE_ANSWER_COMMAND_HANDLER,
 			);
 
-			const command = new CreateAnswerCommand({ ...input });
+			const command = new CreateAnswerCommand({
+				...input,
+				context: { userId: ctx.session.user.id }
+			});
 			const answer = await createAnswerCommandHandler.execute(command);
 
 			return {
@@ -52,14 +48,17 @@ export const answerRouter = createTRPCRouter({
 			};
 		}),
 	updateAnswer: protectedProcedure
-		.input(UpdateAnswerCommandProps)
+		.input(UpdateAnswerCommandProps.omit({ context: true }))
 		.output(AnswerOutput)
-		.mutation(async ({ input }) => {
+		.mutation(async ({ input, ctx }) => {
 			const updateAnswerCommandHandler = quizzCreatorContainer.get<UpdateAnswerCommandHandler>(
 				QUIZZ_CREATOR_TOKENS.UPDATE_ANSWER_COMMAND_HANDLER,
 			);
 
-			const command = new UpdateAnswerCommand(input);
+			const command = new UpdateAnswerCommand({
+				...input,
+				context: { userId: ctx.session.user.id }
+			});
 			const answer = await updateAnswerCommandHandler.execute(command);
 
 			return {
@@ -71,26 +70,24 @@ export const answerRouter = createTRPCRouter({
 				nextQuestionId: answer.nextQuestionId,
 			};
 		}),
-	deleteAnswer: protectedProcedure.input(DeleteAnswerCommandProps).mutation(async ({ input }) => {
+	deleteAnswer: protectedProcedure.input(DeleteAnswerCommandProps.omit({ context: true })).mutation(async ({ input, ctx }) => {
 		const deleteAnswerCommandHandler = quizzCreatorContainer.get<DeleteAnswerCommandHandler>(
 			QUIZZ_CREATOR_TOKENS.DELETE_ANSWER_COMMAND_HANDLER,
 		);
 
-		const command = new DeleteAnswerCommand(input);
+		const command = new DeleteAnswerCommand({
+			...input,
+			context: { userId: ctx.session.user.id }
+		});
 		await deleteAnswerCommandHandler.execute(command);
 	}),
 	getAllAnswers: protectedProcedure
 		.input(GetAllAnswersQueryProps)
 		.output(AnswerOutput.array())
 		.query(async ({ input }) => {
-			const getAllAnswersQueryHandler = quizzCreatorContainer.get<GetAllAnswersQueryHandler>(
-				QUIZZ_CREATOR_TOKENS.GET_ALL_ANSWERS_QUERY_HANDLER,
-			);
+			const results = await db.query.answer.findMany({ where: eq(answer.questionId, input.questionId) });
 
-			const query = new GetAllAnswersQuery({ questionId: input.questionId });
-			const answers = await getAllAnswersQueryHandler.execute(query);
-
-			return answers.map(answer => ({
+			return results.map(answer => ({
 				id: answer.id,
 				questionId: answer.questionId,
 				text: answer.text,
@@ -103,20 +100,16 @@ export const answerRouter = createTRPCRouter({
 		.input(GetAnswerByIdQueryProps)
 		.output(AnswerOutput.nullable())
 		.query(async ({ input }) => {
-			const getAnswerByIdQueryHandler = quizzCreatorContainer.get<GetAnswerByIdQueryHandler>(
-				QUIZZ_CREATOR_TOKENS.GET_ANSWER_BY_ID_QUERY_HANDLER,
-			);
+			const result = await db.query.answer.findFirst({ where: eq(answer.id, input.id) });
 
-			const answer = await getAnswerByIdQueryHandler.execute(new GetAnswerByIdQuery(input));
-
-			return answer
+			return result
 				? {
-						id: answer.id,
-						questionId: answer.questionId,
-						text: answer.text,
-						isCorrect: answer.isCorrect,
-						order: answer.order,
-						nextQuestionId: answer.nextQuestionId,
+						id: result.id,
+						questionId: result.questionId,
+						text: result.text,
+						isCorrect: result.isCorrect,
+						order: result.order,
+						nextQuestionId: result.nextQuestionId,
 				  }
 				: null;
 		}),

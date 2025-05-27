@@ -2,10 +2,13 @@ import crypto from 'crypto';
 import { InMemoryQuizzRepository } from '@quizz-creator/infrastructure/persistence/quizz/in-memory-quizz.repository';
 import { CreateQuizzCommand, CreateQuizzCommandHandler, CreateQuizzCommandProps } from './create-quizz.command';
 import { QuizzBuilder } from '@quizz-creator/domain/quizz/quizz.builder';
+import { UnauthorizedQuizzAccess } from '@quizz-creator/domain/errors/quizz-creator.errors';
 
 describe('CreateQuizzCommandHandler', () => {
 	let quizzRepository: InMemoryQuizzRepository;
 	let handler: CreateQuizzCommandHandler;
+	const userId = '11111111-1111-1111-1111-111111111111';
+	const differentUserId = '22222222-2222-2222-2222-222222222222';
 
 	beforeEach(() => {
 		quizzRepository = new InMemoryQuizzRepository();

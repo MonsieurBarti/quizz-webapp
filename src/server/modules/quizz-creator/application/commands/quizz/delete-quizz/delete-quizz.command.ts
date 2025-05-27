@@ -2,10 +2,13 @@ import { z } from 'zod';
 import { inject, injectable } from 'inversify';
 import { QUIZZ_CREATOR_TOKENS } from '@quizz-creator/quizz-creator.tokens';
 import type { QuizzRepository } from '@quizz-creator/domain/quizz/quizz.repository';
-import { QuizzNotFound } from '@quizz-creator/domain/errors/quizz-creator.errors';
+import { QuizzNotFound, UnauthorizedQuizzAccess } from '@quizz-creator/domain/errors/quizz-creator.errors';
 
 export const DeleteQuizzCommandProps = z.object({
 	id: z.string().uuid('Quizz ID must be a valid UUID.'),
+	context: z.object({
+		userId: z.string().uuid('User ID must be a valid UUID.'),
+	}),
 });
 
 export type DeleteQuizzCommandProps = z.infer<typeof DeleteQuizzCommandProps>;
@@ -23,8 +26,13 @@ export class DeleteQuizzCommandHandler {
 
 	public async execute({ props }: DeleteQuizzCommand): Promise<void> {
 		const existingQuizz = await this.quizzRepository.findById({ id: props.id });
+
 		if (!existingQuizz) {
 			throw new QuizzNotFound(props.id);
+		}
+
+		if (existingQuizz.createdBy !== props.context.userId) {
+			throw new UnauthorizedQuizzAccess(props.id, props.context.userId);
 		}
 
 		await this.quizzRepository.deleteById({ id: props.id });

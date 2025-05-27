@@ -2,29 +2,43 @@ import 'reflect-metadata';
 import { CreateAnswerCommand, CreateAnswerCommandHandler, CreateAnswerCommandProps } from './create-answer.command';
 import { InMemoryAnswerRepository } from '@quizz-creator/infrastructure/persistence/answer/in-memory-answer.repository';
 import { InMemoryQuestionRepository } from '@quizz-creator/infrastructure/persistence/question/in-memory-question.repository';
+import { InMemoryQuizzRepository } from '@quizz-creator/infrastructure/persistence/quizz/in-memory-quizz.repository';
 import { AnswerBuilder } from '@quizz-creator/domain/answer/answer.builder';
 import { QuestionBuilder } from '@quizz-creator/domain/question/question.builder';
-import { QuestionNotFound } from '@quizz-creator/domain/errors/quizz-creator.errors';
+import { QuizzBuilder } from '@quizz-creator/domain/quizz/quizz.builder';
+import { QuestionNotFound, UnauthorizedQuizzAccess } from '@quizz-creator/domain/errors/quizz-creator.errors';
 import { Answer } from '@quizz-creator/domain/answer/answer';
 
 describe('CreateAnswerCommandHandler', () => {
 	let answerRepository: InMemoryAnswerRepository;
 	let questionRepository: InMemoryQuestionRepository;
+	let quizzRepository: InMemoryQuizzRepository;
 	let handler: CreateAnswerCommandHandler;
 	let questionBuilder: QuestionBuilder;
+	let quizzBuilder: QuizzBuilder;
 	let answerBuilder: AnswerBuilder;
+	const userId = '11111111-1111-1111-1111-111111111111';
+	const differentUserId = '22222222-2222-2222-2222-222222222222';
 
 	beforeEach(() => {
 		answerRepository = new InMemoryAnswerRepository();
 		questionRepository = new InMemoryQuestionRepository();
-		handler = new CreateAnswerCommandHandler(answerRepository, questionRepository);
+		quizzRepository = new InMemoryQuizzRepository();
+		handler = new CreateAnswerCommandHandler(answerRepository, questionRepository, quizzRepository);
 		questionBuilder = new QuestionBuilder();
+		quizzBuilder = new QuizzBuilder();
 		answerBuilder = new AnswerBuilder();
 	});
 
 	it('should create and save an answer successfully when question exists', async () => {
 		// Arrange
-		const existingQuestion = questionBuilder.withId(null).build(); // Let builder generate ID or Question.create
+		const existingQuizz = quizzBuilder.withCreatedBy(userId).build();
+		await quizzRepository.save(existingQuizz);
+
+		const existingQuestion = questionBuilder
+			.withId(null)
+			.withQuizzId(existingQuizz.id)
+			.build();
 		await questionRepository.save(existingQuestion);
 
 		const builtAnswer = answerBuilder
@@ -44,6 +58,7 @@ describe('CreateAnswerCommandHandler', () => {
 			isCorrect: builtAnswer.isCorrect,
 			order: builtAnswer.order,
 			nextQuestionId: builtAnswer.nextQuestionId,
+			context: { userId }
 		};
 
 		const command = new CreateAnswerCommand(commandProps);
@@ -79,6 +94,7 @@ describe('CreateAnswerCommandHandler', () => {
 			isCorrect: builtAnswerForNonExistentQuestion.isCorrect,
 			order: builtAnswerForNonExistentQuestion.order,
 			nextQuestionId: builtAnswerForNonExistentQuestion.nextQuestionId,
+			context: { userId }
 		};
 
 		const command = new CreateAnswerCommand(commandProps);
@@ -92,7 +108,13 @@ describe('CreateAnswerCommandHandler', () => {
 
 	it('should allow creating an answer with a specific ID if provided', async () => {
 		// Arrange
-		const existingQuestion = questionBuilder.withId(null).build();
+		const existingQuizz = quizzBuilder.withCreatedBy(userId).build();
+		await quizzRepository.save(existingQuizz);
+
+		const existingQuestion = questionBuilder
+			.withId(null)
+			.withQuizzId(existingQuizz.id)
+			.build();
 		await questionRepository.save(existingQuestion);
 
 		const specificAnswerId = '11111111-1111-1111-1111-111111111111';
@@ -108,6 +130,7 @@ describe('CreateAnswerCommandHandler', () => {
 			isCorrect: builtAnswerWithSpecificId.isCorrect,
 			order: builtAnswerWithSpecificId.order,
 			nextQuestionId: builtAnswerWithSpecificId.nextQuestionId,
+			context: { userId }
 		};
 
 		const command = new CreateAnswerCommand(commandProps);
@@ -120,5 +143,29 @@ describe('CreateAnswerCommandHandler', () => {
 		const savedAnswer = await answerRepository.findById({ id: specificAnswerId });
 		expect(savedAnswer).toBeDefined();
 		expect(savedAnswer?.id).toBe(specificAnswerId);
+	});
+
+	it('should throw UnauthorizedQuizzAccess if user is not the owner of the parent quizz', async () => {
+		// Arrange
+		const existingQuizz = quizzBuilder.withCreatedBy(userId).build();
+		await quizzRepository.save(existingQuizz);
+
+		const existingQuestion = questionBuilder
+			.withQuizzId(existingQuizz.id)
+			.build();
+		await questionRepository.save(existingQuestion);
+
+		const commandProps: CreateAnswerCommandProps = {
+			questionId: existingQuestion.id!,
+			text: 'Unauthorized answer',
+			isCorrect: true,
+			order: 1,
+			nextQuestionId: null,
+			context: { userId: differentUserId } // Different user trying to create an answer
+		};
+		const command = new CreateAnswerCommand(commandProps);
+
+		// Act & Assert
+		await expect(handler.execute(command)).rejects.toThrow(UnauthorizedQuizzAccess);
 	});
 });

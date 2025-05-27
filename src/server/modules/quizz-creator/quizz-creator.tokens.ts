@@ -1,12 +1,4 @@
 export const QUIZZ_CREATOR_TOKENS = {
-	// Query Handlers (if any, add later)
-	GET_ALL_QUIZZ_QUERY_HANDLER: Symbol.for('GET_ALL_QUIZZ_QUERY_HANDLER'),
-	GET_ALL_QUESTIONS_QUERY_HANDLER: Symbol.for('GetAllQuestionsQueryHandler'),
-	GET_ALL_ANSWERS_QUERY_HANDLER: Symbol.for('GetAllAnswersQueryHandler'),
-	GET_QUIZZ_BY_ID_QUERY_HANDLER: Symbol.for('GetQuizzByIdQueryHandler'),
-	GET_QUESTION_BY_ID_QUERY_HANDLER: Symbol.for('GetQuestionByIdQueryHandler'),
-	GET_ANSWER_BY_ID_QUERY_HANDLER: Symbol.for('GetAnswerByIdQueryHandler'),
-
 	// Repositories
 	QUIZZ_REPOSITORY: Symbol.for('QUIZZ_REPOSITORY'),
 	QUESTION_REPOSITORY: Symbol.for('QUESTION_REPOSITORY'),

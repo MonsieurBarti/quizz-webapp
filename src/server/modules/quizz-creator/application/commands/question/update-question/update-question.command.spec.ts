@@ -5,28 +5,47 @@ import {
 	UpdateQuestionCommandProps,
 } from './update-question.command';
 import { InMemoryQuestionRepository } from '@quizz-creator/infrastructure/persistence/question/in-memory-question.repository';
+import { InMemoryQuizzRepository } from '@quizz-creator/infrastructure/persistence/quizz/in-memory-quizz.repository';
 import { QuestionBuilder } from '@quizz-creator/domain/question/question.builder';
-import { QuestionNotFound } from '@quizz-creator/domain/errors/quizz-creator.errors';
+import { QuizzBuilder } from '@quizz-creator/domain/quizz/quizz.builder';
+import { QuestionNotFound, UnauthorizedQuestionAccess } from '@quizz-creator/domain/errors/quizz-creator.errors';
 import { Question } from '@quizz-creator/domain/question/question';
 
 describe('UpdateQuestionCommandHandler', () => {
 	let questionRepository: InMemoryQuestionRepository;
+	let quizzRepository: InMemoryQuizzRepository;
 	let handler: UpdateQuestionCommandHandler;
 	let questionBuilder: QuestionBuilder;
+	let quizzBuilder: QuizzBuilder;
 	let existingQuestion: Question;
+	const userId = '11111111-1111-1111-1111-111111111111';
+	const differentUserId = '22222222-2222-2222-2222-222222222222';
 
 	beforeEach(async () => {
 		questionRepository = new InMemoryQuestionRepository();
-		handler = new UpdateQuestionCommandHandler(questionRepository);
+		quizzRepository = new InMemoryQuizzRepository();
+		handler = new UpdateQuestionCommandHandler(questionRepository, quizzRepository);
 		questionBuilder = new QuestionBuilder();
+		quizzBuilder = new QuizzBuilder();
 
-		existingQuestion = questionBuilder.build();
+		const parentQuizz = quizzBuilder.withCreatedBy(userId).build();
+		await quizzRepository.save(parentQuizz);
+
+		existingQuestion = questionBuilder.withQuizzId(parentQuizz.id).build();
 		await questionRepository.save(existingQuestion);
 	});
 
 	it('should update an existing question successfully', async () => {
 		// Arrange
-		const initialQuestion = questionBuilder.withText('Old text').withOrder(1).withImageUrl(null).build();
+		const parentQuizz = quizzBuilder.withCreatedBy(userId).build();
+		await quizzRepository.save(parentQuizz);
+
+		const initialQuestion = questionBuilder
+			.withText('Old text')
+			.withOrder(1)
+			.withImageUrl(null)
+			.withQuizzId(parentQuizz.id)
+			.build();
 		await questionRepository.save(initialQuestion);
 
 		const updateProps: UpdateQuestionCommandProps = {
@@ -34,6 +53,7 @@ describe('UpdateQuestionCommandHandler', () => {
 			text: 'New updated text',
 			order: 2,
 			imageUrl: 'https://example.com/new-image.jpg',
+			context: { userId }
 		};
 		const command = new UpdateQuestionCommand(updateProps);
 
@@ -59,6 +79,7 @@ describe('UpdateQuestionCommandHandler', () => {
 		const commandProps: UpdateQuestionCommandProps = {
 			id: nonExistentQuestionId,
 			text: 'Text for a ghost question',
+			context: { userId }
 		};
 		const command = new UpdateQuestionCommand(commandProps);
 
@@ -71,13 +92,22 @@ describe('UpdateQuestionCommandHandler', () => {
 
 	it('should partially update an question if only some fields are provided', async () => {
 		// Arrange
-		const initialQuestion = questionBuilder.withText('Initial Text').withOrder(0).withImageUrl(null).build();
+		const parentQuizz = quizzBuilder.withCreatedBy(userId).build();
+		await quizzRepository.save(parentQuizz);
+
+		const initialQuestion = questionBuilder
+			.withText('Initial Text')
+			.withOrder(0)
+			.withImageUrl(null)
+			.withQuizzId(parentQuizz.id)
+			.build();
 		await questionRepository.save(initialQuestion);
 
 		const partialUpdateProps: UpdateQuestionCommandProps = {
 			id: initialQuestion.id!,
 			text: 'Partially Updated Text',
-			// isCorrect and order are not provided
+			// order and imageUrl are not provided
+			context: { userId }
 		};
 		const command = new UpdateQuestionCommand(partialUpdateProps);
 
@@ -92,5 +122,27 @@ describe('UpdateQuestionCommandHandler', () => {
 		const savedQuestion = await questionRepository.findById({ id: initialQuestion.id! });
 		expect(savedQuestion?.text).toBe(partialUpdateProps.text);
 		expect(savedQuestion?.order).toBe(initialQuestion.order);
+	});
+
+	it('should throw UnauthorizedQuestionAccess if user is not the owner of the parent quizz', async () => {
+		// Arrange
+		const parentQuizz = quizzBuilder.withCreatedBy(userId).build();
+		await quizzRepository.save(parentQuizz);
+
+		const question = questionBuilder
+			.withText('Question to update')
+			.withQuizzId(parentQuizz.id)
+			.build();
+		await questionRepository.save(question);
+
+		const updateProps: UpdateQuestionCommandProps = {
+			id: question.id!,
+			text: 'Unauthorized update attempt',
+			context: { userId: differentUserId } // Different user trying to update
+		};
+		const command = new UpdateQuestionCommand(updateProps);
+
+		// Act & Assert
+		await expect(handler.execute(command)).rejects.toThrow(UnauthorizedQuestionAccess);
 	});
 });

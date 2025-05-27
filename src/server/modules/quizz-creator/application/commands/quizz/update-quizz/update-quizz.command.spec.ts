@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { UpdateQuizzCommand, UpdateQuizzCommandHandler, UpdateQuizzCommandProps } from './update-quizz.command';
 import { InMemoryQuizzRepository } from '@quizz-creator/infrastructure/persistence/quizz/in-memory-quizz.repository';
 import { QuizzBuilder } from '@quizz-creator/domain/quizz/quizz.builder';
-import { QuizzNotFound } from '@quizz-creator/domain/errors/quizz-creator.errors';
+import { QuizzNotFound, UnauthorizedQuizzAccess } from '@quizz-creator/domain/errors/quizz-creator.errors';
 import { Quizz } from '@quizz-creator/domain/quizz/quizz';
 
 describe('UpdateQuizzCommandHandler', () => {
@@ -10,13 +10,15 @@ describe('UpdateQuizzCommandHandler', () => {
 	let handler: UpdateQuizzCommandHandler;
 	let quizzBuilder: QuizzBuilder;
 	let existingQuizz: Quizz;
+	const userId = '11111111-1111-1111-1111-111111111111';
+	const differentUserId = '22222222-2222-2222-2222-222222222222';
 
 	beforeEach(async () => {
 		quizzRepository = new InMemoryQuizzRepository();
 		handler = new UpdateQuizzCommandHandler(quizzRepository);
 		quizzBuilder = new QuizzBuilder();
 
-		existingQuizz = quizzBuilder.build();
+		existingQuizz = quizzBuilder.withCreatedBy(userId).build();
 		await quizzRepository.save(existingQuizz);
 	});
 
@@ -26,6 +28,7 @@ describe('UpdateQuizzCommandHandler', () => {
 			.withTitle('Old title')
 			.withDescription('Old description')
 			.withIsPublished(false)
+			.withCreatedBy(userId)
 			.build();
 		await quizzRepository.save(initialQuizz);
 
@@ -34,6 +37,7 @@ describe('UpdateQuizzCommandHandler', () => {
 			title: 'New updated title',
 			description: 'New updated description',
 			isPublished: true,
+			context: { userId }
 		};
 		const command = new UpdateQuizzCommand(updateProps);
 
@@ -61,6 +65,7 @@ describe('UpdateQuizzCommandHandler', () => {
 			title: 'Title for a ghost quizz',
 			description: 'Description for a ghost quizz',
 			isPublished: true,
+			context: { userId }
 		};
 		const command = new UpdateQuizzCommand(commandProps);
 
@@ -75,6 +80,7 @@ describe('UpdateQuizzCommandHandler', () => {
 			.withTitle('Initial Title')
 			.withDescription('Initial Description')
 			.withIsPublished(false)
+			.withCreatedBy(userId)
 			.build();
 		await quizzRepository.save(initialQuizz);
 
@@ -82,6 +88,7 @@ describe('UpdateQuizzCommandHandler', () => {
 			id: initialQuizz.id!,
 			title: 'Partially Updated Title',
 			// isCorrect and order are not provided
+			context: { userId }
 		};
 		const command = new UpdateQuizzCommand(partialUpdateProps);
 
@@ -97,5 +104,26 @@ describe('UpdateQuizzCommandHandler', () => {
 		expect(savedQuizz?.title).toBe(partialUpdateProps.title);
 		expect(savedQuizz?.description).toBe(initialQuizz.description);
 		expect(savedQuizz?.isPublished).toBe(initialQuizz.isPublished);
+		});
+
+	it('should throw UnauthorizedQuizzAccess if the user is not the owner of the quizz', async () => {
+		// Arrange
+		const initialQuizz = quizzBuilder
+			.withTitle('Initial Title')
+			.withDescription('Initial Description')
+			.withCreatedBy(userId) // Owned by userId
+			.build();
+		await quizzRepository.save(initialQuizz);
+
+		const updateProps: UpdateQuizzCommandProps = {
+			id: initialQuizz.id!,
+			title: 'Unauthorized Update',
+			context: { userId: differentUserId } // Different user trying to update
+		};
+		const command = new UpdateQuizzCommand(updateProps);
+
+		// Act & Assert
+		await expect(handler.execute(command)).rejects.toThrow(UnauthorizedQuizzAccess);
+		await expect(handler.execute(command)).rejects.toThrow(`User ${differentUserId} is not authorized to access quizz ${initialQuizz.id}`);
 	});
 });

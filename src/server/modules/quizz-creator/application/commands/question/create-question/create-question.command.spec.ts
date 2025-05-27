@@ -8,13 +8,15 @@ import { InMemoryQuestionRepository } from '@quizz-creator/infrastructure/persis
 import { InMemoryQuizzRepository } from '@quizz-creator/infrastructure/persistence/quizz/in-memory-quizz.repository';
 import { QuestionBuilder } from '@quizz-creator/domain/question/question.builder';
 import { QuizzBuilder } from '@quizz-creator/domain/quizz/quizz.builder';
-import { QuizzNotFound } from '@quizz-creator/domain/errors/quizz-creator.errors';
+import { QuizzNotFound, UnauthorizedQuizzAccess } from '@quizz-creator/domain/errors/quizz-creator.errors';
 import crypto from 'crypto';
 
 describe('CreateQuestionCommandHandler', () => {
 	let handler: CreateQuestionCommandHandler;
 	let questionRepository: InMemoryQuestionRepository;
 	let quizzRepository: InMemoryQuizzRepository;
+	const userId = '11111111-1111-1111-1111-111111111111';
+	const differentUserId = '22222222-2222-2222-2222-222222222222';
 
 	beforeEach(() => {
 		questionRepository = new InMemoryQuestionRepository();
@@ -24,7 +26,7 @@ describe('CreateQuestionCommandHandler', () => {
 
 	it('should create and save a new question for an existing quizz', async () => {
 		// Arrange
-		const existingQuizz = new QuizzBuilder().build();
+		const existingQuizz = new QuizzBuilder().withCreatedBy(userId).build();
 		await quizzRepository.save(existingQuizz);
 
 		const questionId = crypto.randomUUID();
@@ -41,6 +43,7 @@ describe('CreateQuestionCommandHandler', () => {
 			text: builtQuestion.text,
 			order: builtQuestion.order,
 			imageUrl: builtQuestion.imageUrl,
+			context: { userId }
 		};
 		const command = new CreateQuestionCommand(commandProps);
 
@@ -66,6 +69,7 @@ describe('CreateQuestionCommandHandler', () => {
 			text: 'A question for a ghost quizz',
 			order: 0,
 			imageUrl: null,
+			context: { userId }
 		};
 		const command = new CreateQuestionCommand(commandProps);
 
@@ -75,7 +79,7 @@ describe('CreateQuestionCommandHandler', () => {
 
 	it('should create a question with a generated ID if no ID is provided', async () => {
 		// Arrange
-		const existingQuizz = new QuizzBuilder().build();
+		const existingQuizz = new QuizzBuilder().withCreatedBy(userId).build();
 		await quizzRepository.save(existingQuizz);
 
 		const commandProps: CreateQuestionCommandProps = {
@@ -84,6 +88,7 @@ describe('CreateQuestionCommandHandler', () => {
 			text: 'Question with generated ID',
 			order: 2,
 			imageUrl: null,
+			context: { userId }
 		};
 		const command = new CreateQuestionCommand(commandProps);
 
@@ -97,5 +102,24 @@ describe('CreateQuestionCommandHandler', () => {
 		expect(savedQuestion).toBeDefined();
 		expect(savedQuestion?.quizzId).toBe(existingQuizz.id);
 		expect(savedQuestion?.text).toBe(commandProps.text);
+	});
+
+	it('should throw UnauthorizedQuizzAccess if user is not the owner of the quizz', async () => {
+		// Arrange
+		const existingQuizz = new QuizzBuilder().withCreatedBy(userId).build();
+		await quizzRepository.save(existingQuizz);
+
+		const commandProps: CreateQuestionCommandProps = {
+			quizzId: existingQuizz.id,
+			text: 'Unauthorized question',
+			order: 1,
+			imageUrl: null,
+			context: { userId: differentUserId } // Different user trying to create a question
+		};
+		const command = new CreateQuestionCommand(commandProps);
+
+		// Act & Assert
+		await expect(handler.execute(command)).rejects.toThrow(UnauthorizedQuizzAccess);
+		await expect(handler.execute(command)).rejects.toThrow(`User ${differentUserId} is not authorized to access quizz ${existingQuizz.id}`);
 	});
 });

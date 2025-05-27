@@ -5,7 +5,11 @@ import { QUIZZ_CREATOR_TOKENS } from '@quizz-creator/quizz-creator.tokens';
 import type { QuestionRepository } from '@quizz-creator/domain/question/question.repository';
 import { Question, QuestionProps } from '@quizz-creator/domain/question/question';
 import type { QuizzRepository } from '@quizz-creator/domain/quizz/quizz.repository';
-import { QuizzNotFound } from '@quizz-creator/domain/errors/quizz-creator.errors';
+import {
+	QuizzNotFound,
+	UnauthorizedQuestionAccess,
+	UnauthorizedQuizzAccess,
+} from '@quizz-creator/domain/errors/quizz-creator.errors';
 
 export const CreateQuestionCommandProps = z.object({
 	id: z.string().uuid().optional(),
@@ -13,6 +17,9 @@ export const CreateQuestionCommandProps = z.object({
 	text: z.string().min(1, 'Question text cannot be empty.').max(1000, 'Question text is too long.'),
 	order: z.number().int().min(0, 'Order must be a non-negative integer.'),
 	imageUrl: z.string().url('Invalid URL format for image.').nullable(),
+	context: z.object({
+		userId: z.string().uuid('User ID must be a valid UUID.'),
+	}),
 });
 
 export type CreateQuestionCommandProps = z.infer<typeof CreateQuestionCommandProps>;
@@ -35,6 +42,11 @@ export class CreateQuestionCommandHandler {
 		if (!quizz) {
 			throw new QuizzNotFound(props.quizzId);
 		}
+
+		if (quizz.createdBy !== props.context.userId) {
+			throw new UnauthorizedQuizzAccess(props.quizzId, props.context.userId);
+		}
+
 		const questionToCreateProps: QuestionProps = {
 			id: props.id,
 			quizzId: props.quizzId,

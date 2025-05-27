@@ -1,9 +1,8 @@
 import { createTRPCRouter, protectedProcedure } from '@/server/api/trpc';
 import { quizzCreatorContainer } from '../../quizz-creator.container';
 import { QUIZZ_CREATOR_TOKENS } from '../../quizz-creator.tokens';
-import { QuizzOutput } from './types';
+import { GetQuizzByIdQueryProps, QuizzOutput } from './types';
 
-// Quizz Command and Query Imports
 import {
 	CreateQuizzCommand,
 	CreateQuizzCommandHandler,
@@ -19,15 +18,9 @@ import {
 	DeleteQuizzCommandHandler,
 	DeleteQuizzCommandProps,
 } from '../../application/commands/quizz/delete-quizz/delete-quizz.command';
-import {
-	GetAllQuizzQuery,
-	type GetAllQuizzQueryHandler,
-} from '../../application/queries/quizz/get-all-quizz/get-all-quizz.query';
-import {
-	GetQuizzByIdQuery,
-	GetQuizzByIdQueryHandler,
-	GetQuizzByIdQueryProps,
-} from '../../application/queries/quizz/get-quizz-by-id/get-quizz-by-id.query';
+import { db } from '@/server/db';
+import { and, eq } from 'drizzle-orm';
+import { quizz } from '@/server/db/schema';
 
 export const quizzRouter = createTRPCRouter({
 	createQuizz: protectedProcedure
@@ -52,12 +45,15 @@ export const quizzRouter = createTRPCRouter({
 	updateQuizz: protectedProcedure
 		.input(UpdateQuizzCommandProps)
 		.output(QuizzOutput)
-		.mutation(async ({ input }) => {
+		.mutation(async ({ input, ctx }) => {
 			const updateQuizzCommandHandler = quizzCreatorContainer.get<UpdateQuizzCommandHandler>(
 				QUIZZ_CREATOR_TOKENS.UPDATE_QUIZZ_COMMAND_HANDLER,
 			);
 
-			const command = new UpdateQuizzCommand(input);
+			const command = new UpdateQuizzCommand({
+				...input,
+				context: { userId: ctx.session.user.id },
+			});
 			const quizz = await updateQuizzCommandHandler.execute(command);
 
 			return {
@@ -68,23 +64,20 @@ export const quizzRouter = createTRPCRouter({
 				createdBy: quizz.createdBy,
 			};
 		}),
-	deleteQuizz: protectedProcedure.input(DeleteQuizzCommandProps).mutation(async ({ input }) => {
+	deleteQuizz: protectedProcedure.input(DeleteQuizzCommandProps).mutation(async ({ input, ctx }) => {
 		const deleteQuizzCommandHandler = quizzCreatorContainer.get<DeleteQuizzCommandHandler>(
 			QUIZZ_CREATOR_TOKENS.DELETE_QUIZZ_COMMAND_HANDLER,
 		);
 
-		const command = new DeleteQuizzCommand(input);
+		const command = new DeleteQuizzCommand({
+			...input,
+			context: { userId: ctx.session.user.id },
+		});
 		await deleteQuizzCommandHandler.execute(command);
 	}),
 	getAllQuizz: protectedProcedure.output(QuizzOutput.array()).query(async ({ ctx }) => {
-		const getAllQuizzQueryHandler = quizzCreatorContainer.get<GetAllQuizzQueryHandler>(
-			QUIZZ_CREATOR_TOKENS.GET_ALL_QUIZZ_QUERY_HANDLER,
-		);
-
-		const query = new GetAllQuizzQuery({ createdBy: ctx.session.user.id });
-		const quizzes = await getAllQuizzQueryHandler.execute(query); // Renamed to quizzes for clarity
-
-		return quizzes.map(quizz => ({
+		const results = await db.query.quizz.findMany({ where: eq(quizz.createdBy, ctx.session.user.id) });
+		return results.map(quizz => ({
 			id: quizz.id,
 			title: quizz.title,
 			description: quizz.description,
@@ -95,20 +88,18 @@ export const quizzRouter = createTRPCRouter({
 	getQuizzById: protectedProcedure
 		.input(GetQuizzByIdQueryProps)
 		.output(QuizzOutput.nullable())
-		.query(async ({ input }) => {
-			const getQuizzByIdQueryHandler = quizzCreatorContainer.get<GetQuizzByIdQueryHandler>(
-				QUIZZ_CREATOR_TOKENS.GET_QUIZZ_BY_ID_QUERY_HANDLER,
-			);
+		.query(async ({ input, ctx }) => {
+			const result = await db.query.quizz.findFirst({
+				where: and(eq(quizz.id, input.id), eq(quizz.createdBy, ctx.session.user.id)),
+			});
 
-			const quizz = await getQuizzByIdQueryHandler.execute(new GetQuizzByIdQuery(input));
-
-			return quizz
+			return result
 				? {
-						id: quizz.id,
-						title: quizz.title,
-						description: quizz.description,
-						isPublished: quizz.isPublished,
-						createdBy: quizz.createdBy,
+						id: result.id,
+						title: result.title,
+						description: result.description,
+						isPublished: result.isPublished,
+						createdBy: result.createdBy,
 				  }
 				: null;
 		}),
