@@ -8,3 +8,13 @@ export const QuestionOutput = z.object({
 	imageUrl: z.string().nullable(),
 });
 export type QuestionOutput = z.infer<typeof QuestionOutput>;
+
+export const GetAllQuestionsQueryProps = z.object({
+	quizzId: z.string().uuid(),
+});
+export type GetAllQuestionsQueryProps = z.infer<typeof GetAllQuestionsQueryProps>;
+
+export const GetQuestionByIdQueryProps = z.object({
+	id: z.string().uuid(),
+});
+export type GetQuestionByIdQueryProps = z.infer<typeof GetQuestionByIdQueryProps>;

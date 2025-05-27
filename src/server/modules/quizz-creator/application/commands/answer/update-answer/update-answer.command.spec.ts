@@ -2,29 +2,40 @@ import 'reflect-metadata';
 import { UpdateAnswerCommand, UpdateAnswerCommandHandler, UpdateAnswerCommandProps } from './update-answer.command';
 import { InMemoryAnswerRepository } from '@quizz-creator/infrastructure/persistence/answer/in-memory-answer.repository';
 import { InMemoryQuestionRepository } from '@quizz-creator/infrastructure/persistence/question/in-memory-question.repository';
+import { InMemoryQuizzRepository } from '@quizz-creator/infrastructure/persistence/quizz/in-memory-quizz.repository';
 import { AnswerBuilder } from '@quizz-creator/domain/answer/answer.builder';
 import { QuestionBuilder } from '@quizz-creator/domain/question/question.builder';
-import { AnswerNotFound } from '@quizz-creator/domain/errors/quizz-creator.errors';
+import { QuizzBuilder } from '@quizz-creator/domain/quizz/quizz.builder';
+import { AnswerNotFound, UnauthorizedAnswerAccess } from '@quizz-creator/domain/errors/quizz-creator.errors';
 import { Answer } from '@quizz-creator/domain/answer/answer';
 import { Question } from '@quizz-creator/domain/question/question';
 
 describe('UpdateAnswerCommandHandler', () => {
 	let answerRepository: InMemoryAnswerRepository;
-	let questionRepository: InMemoryQuestionRepository; // To set up initial question context
+	let questionRepository: InMemoryQuestionRepository;
+	let quizzRepository: InMemoryQuizzRepository;
 	let handler: UpdateAnswerCommandHandler;
 	let questionBuilder: QuestionBuilder;
+	let quizzBuilder: QuizzBuilder;
 	let answerBuilder: AnswerBuilder;
 	let existingQuestion: Question;
+	const userId = '11111111-1111-1111-1111-111111111111';
+	const differentUserId = '22222222-2222-2222-2222-222222222222';
 
 	beforeEach(async () => {
 		answerRepository = new InMemoryAnswerRepository();
 		questionRepository = new InMemoryQuestionRepository();
-		handler = new UpdateAnswerCommandHandler(answerRepository);
+		quizzRepository = new InMemoryQuizzRepository();
+		handler = new UpdateAnswerCommandHandler(answerRepository, questionRepository, quizzRepository);
 		questionBuilder = new QuestionBuilder();
+		quizzBuilder = new QuizzBuilder();
 		answerBuilder = new AnswerBuilder();
 
-		// Create a common question for tests
-		existingQuestion = questionBuilder.build();
+		// Create a common quizz and question for tests
+		const existingQuizz = quizzBuilder.withCreatedBy(userId).build();
+		await quizzRepository.save(existingQuizz);
+
+		existingQuestion = questionBuilder.withQuizzId(existingQuizz.id).build();
 		await questionRepository.save(existingQuestion);
 	});
 
@@ -45,6 +56,7 @@ describe('UpdateAnswerCommandHandler', () => {
 			isCorrect: true,
 			order: 2,
 			nextQuestionId: questionBuilder.build().id, // Mock a new next question ID
+			context: { userId }
 		};
 		const command = new UpdateAnswerCommand(updateProps);
 
@@ -70,6 +82,7 @@ describe('UpdateAnswerCommandHandler', () => {
 		const commandProps: UpdateAnswerCommandProps = {
 			id: nonExistentAnswerId,
 			text: 'Text for a ghost answer',
+			context: { userId }
 		};
 		const command = new UpdateAnswerCommand(commandProps);
 
@@ -92,6 +105,7 @@ describe('UpdateAnswerCommandHandler', () => {
 			id: initialAnswer.id!,
 			text: 'Partially Updated Text',
 			// isCorrect and order are not provided
+			context: { userId }
 		};
 		const command = new UpdateAnswerCommand(partialUpdateProps);
 
@@ -119,6 +133,7 @@ describe('UpdateAnswerCommandHandler', () => {
 		const updateProps: UpdateAnswerCommandProps = {
 			id: initialAnswer.id!,
 			nextQuestionId: null,
+			context: { userId }
 		};
 		const command = new UpdateAnswerCommand(updateProps);
 
@@ -129,5 +144,31 @@ describe('UpdateAnswerCommandHandler', () => {
 		expect(result.nextQuestionId).toBeNull();
 		const savedAnswer = await answerRepository.findById({ id: initialAnswer.id! });
 		expect(savedAnswer?.nextQuestionId).toBeNull();
+	});
+
+	it('should throw UnauthorizedAnswerAccess if user is not the owner of the parent quizz', async () => {
+		// Arrange
+		const existingQuizz = quizzBuilder.withCreatedBy(userId).build();
+		await quizzRepository.save(existingQuizz);
+
+		const question = questionBuilder
+			.withQuizzId(existingQuizz.id)
+			.build();
+		await questionRepository.save(question);
+
+		const answer = answerBuilder
+			.withQuestionId(question.id!)
+			.build();
+		await answerRepository.save(answer);
+
+		const updateProps: UpdateAnswerCommandProps = {
+			id: answer.id!,
+			text: 'Unauthorized update attempt',
+			context: { userId: differentUserId } // Different user trying to update
+		};
+		const command = new UpdateAnswerCommand(updateProps);
+
+		// Act & Assert
+		await expect(handler.execute(command)).rejects.toThrow(UnauthorizedAnswerAccess);
 	});
 });

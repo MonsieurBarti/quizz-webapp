@@ -66,7 +66,7 @@ export const question = createTable(
 	'question',
 	t => ({
 		id: t.uuid().notNull().primaryKey().defaultRandom(),
-		quizId: t
+		quizzId: t
 			.uuid()
 			.notNull()
 			.references(() => quizz.id, { onDelete: 'cascade' }),
@@ -83,13 +83,13 @@ export const question = createTable(
 			.notNull(),
 	}),
 	t => [
-		index('question_quiz_idx').on(t.quizId),
-		index('question_order_idx').on(t.quizId, t.order),
-		uniqueIndex('question_quiz_order_idx').on(t.quizId, t.order),
+		index('question_quizz_idx').on(t.quizzId),
+		index('question_order_idx').on(t.quizzId, t.order),
+		uniqueIndex('question_quizz_order_idx').on(t.quizzId, t.order),
 	],
 );
 export const questionRelations = relations(question, ({ one, many }) => ({
-	quizz: one(quizz, { fields: [question.quizId], references: [quizz.id] }),
+	quizz: one(quizz, { fields: [question.quizzId], references: [quizz.id] }),
 	answers: many(answer),
 	responses: many(response),
 }));

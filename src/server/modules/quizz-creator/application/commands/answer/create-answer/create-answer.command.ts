@@ -5,7 +5,12 @@ import { QUIZZ_CREATOR_TOKENS } from '@quizz-creator/quizz-creator.tokens';
 import type { AnswerRepository } from '@quizz-creator/domain/answer/answer.repository';
 import { Answer, AnswerProps } from '@quizz-creator/domain/answer/answer';
 import type { QuestionRepository } from '@quizz-creator/domain/question/question.repository';
-import { QuestionNotFound } from '@quizz-creator/domain/errors/quizz-creator.errors';
+import type { QuizzRepository } from '@quizz-creator/domain/quizz/quizz.repository';
+import {
+	QuestionNotFound,
+	QuizzNotFound,
+	UnauthorizedQuizzAccess,
+} from '@quizz-creator/domain/errors/quizz-creator.errors';
 
 export const CreateAnswerCommandProps = z.object({
 	id: z.string().uuid().nullable().optional(),
@@ -14,6 +19,9 @@ export const CreateAnswerCommandProps = z.object({
 	isCorrect: z.boolean(),
 	order: z.number().int().min(0, 'Order must be a non-negative integer.'),
 	nextQuestionId: z.string().uuid('Next Question ID must be a valid UUID').nullable(),
+	context: z.object({
+		userId: z.string().uuid('User ID must be a valid UUID.'),
+	}),
 });
 
 export type CreateAnswerCommandProps = z.infer<typeof CreateAnswerCommandProps>;
@@ -29,12 +37,23 @@ export class CreateAnswerCommandHandler {
 		private readonly answerRepository: AnswerRepository,
 		@inject(QUIZZ_CREATOR_TOKENS.QUESTION_REPOSITORY)
 		private readonly questionRepository: QuestionRepository,
+		@inject(QUIZZ_CREATOR_TOKENS.QUIZZ_REPOSITORY)
+		private readonly quizzRepository: QuizzRepository,
 	) {}
 
 	public async execute({ props }: CreateAnswerCommand): Promise<Answer> {
 		const question = await this.questionRepository.findById({ id: props.questionId });
 		if (!question) {
 			throw new QuestionNotFound(props.questionId);
+		}
+
+		const parentQuizz = await this.quizzRepository.findById({ id: question.quizzId });
+		if (!parentQuizz) {
+			throw new QuizzNotFound(question.quizzId);
+		}
+
+		if (parentQuizz.createdBy !== props.context.userId) {
+			throw new UnauthorizedQuizzAccess(question.quizzId, props.context.userId);
 		}
 
 		const answerToCreateProps: AnswerProps = {
