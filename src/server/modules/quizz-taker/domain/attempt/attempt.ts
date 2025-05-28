@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AttemptAlreadyCompletedError } from '../errors/quizz-taker.errors';
+import { AttemptAlreadyCompleted } from '../errors/quizz-taker.errors';
 
 export const AttemptProps = z.object({
 	id: z.string().uuid().nullable().optional(),
@@ -39,21 +39,21 @@ export class Attempt {
 
 	public incrementScore(): void {
 		if (this._completedAt) {
-			throw new AttemptAlreadyCompletedError();
+			throw new AttemptAlreadyCompleted();
 		}
 		this._score++;
 	}
 
 	public incrementTotalQuestionsAnswered(): void {
 		if (this._completedAt) {
-			throw new AttemptAlreadyCompletedError();
+			throw new AttemptAlreadyCompleted();
 		}
 		this._totalQuestionsAnswered++;
 	}
 
 	public complete(): void {
 		if (this._completedAt) {
-			throw new AttemptAlreadyCompletedError();
+			throw new AttemptAlreadyCompleted();
 		}
 		this._completedAt = new Date();
 	}

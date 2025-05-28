@@ -1,16 +1,19 @@
 import { createTRPCRouter, publicProcedure } from '@/server/api/trpc';
-import { db } from '@/server/db';
-import { and, eq } from 'drizzle-orm';
-import { quizz } from '@/server/db/schema';
 import { GetQuizzByIdQueryProps, QuizzOutput } from './types';
+import { quizzTakerContainer } from '../../quizz-taker.container';
+import { QUIZZ_TAKER_TOKENS } from '../../quizz-taker.tokens';
+import type { GetAllQuizzQueryHandler } from '../../application/queries/quizz/get-all-quizz/get-all-quizz.query';
+import type { GetQuizzByIdQueryHandler } from '../../application/queries/quizz/get-quizz-by-id/get-quizz-by-id.query';
 
 export const quizzRouter = createTRPCRouter({
 	getAllQuizz: publicProcedure.output(QuizzOutput.array()).query(async _ => {
-		const results = await db.query.quizz.findMany({
-			where: eq(quizz.isPublished, true),
-			with: { createdBy: { columns: { name: true } } },
-		});
-		return results.map(quizz => ({
+		const getAllQuizzQueryHandler = quizzTakerContainer.get<GetAllQuizzQueryHandler>(
+			QUIZZ_TAKER_TOKENS.GET_ALL_QUIZZ_QUERY_HANDLER,
+		);
+
+		const quizz = await getAllQuizzQueryHandler.execute();
+
+		return quizz.map(quizz => ({
 			id: quizz.id,
 			title: quizz.title,
 			description: quizz.description,
@@ -22,10 +25,11 @@ export const quizzRouter = createTRPCRouter({
 		.input(GetQuizzByIdQueryProps)
 		.output(QuizzOutput.nullable())
 		.query(async ({ input }) => {
-			const result = await db.query.quizz.findFirst({
-				where: and(eq(quizz.id, input.id), eq(quizz.isPublished, true)),
-				with: { createdBy: { columns: { name: true } } },
-			});
+			const getQuizzByIdQueryHandler = quizzTakerContainer.get<GetQuizzByIdQueryHandler>(
+				QUIZZ_TAKER_TOKENS.GET_QUIZZ_BY_ID_QUERY_HANDLER,
+			);
+
+			const result = await getQuizzByIdQueryHandler.execute({ props: input });
 
 			return result
 				? {

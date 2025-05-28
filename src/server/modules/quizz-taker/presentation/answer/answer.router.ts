@@ -1,17 +1,20 @@
 import { createTRPCRouter, publicProcedure } from '@/server/api/trpc';
-import { db } from '@/server/db';
-import { eq } from 'drizzle-orm';
-import { answer } from '@/server/db/schema';
 import { GetAllAnswersQueryProps, GetAnswerByIdQueryProps, AnswerOutput } from './types';
+import { quizzTakerContainer } from '../../quizz-taker.container';
+import { QUIZZ_TAKER_TOKENS } from '../../quizz-taker.tokens';
+import type { GetAllAnswersQueryHandler } from '../../application/queries/answer/get-all-answers/get-all-answers.query';
+import type { GetAnswerByIdQueryHandler } from '../../application/queries/answer/get-answer-by-id/get-answer-by-id.query';
 
 export const answerRouter = createTRPCRouter({
 	getAllAnswers: publicProcedure
 		.input(GetAllAnswersQueryProps)
 		.output(AnswerOutput.array())
 		.query(async ({ input }) => {
-			const results = await db.query.answer.findMany({
-				where: eq(answer.questionId, input.questionId),
-			});
+			const getAllAnswersQueryHandler = quizzTakerContainer.get<GetAllAnswersQueryHandler>(
+				QUIZZ_TAKER_TOKENS.GET_ALL_ANSWERS_QUERY_HANDLER,
+			);
+			const results = await getAllAnswersQueryHandler.execute({ props: input });
+
 			return results.map(answer => ({
 				id: answer.id,
 				text: answer.text,
@@ -23,9 +26,10 @@ export const answerRouter = createTRPCRouter({
 		.input(GetAnswerByIdQueryProps)
 		.output(AnswerOutput.nullable())
 		.query(async ({ input }) => {
-			const result = await db.query.answer.findFirst({
-				where: eq(answer.id, input.id),
-			});
+			const getAnswerByIdQueryHandler = quizzTakerContainer.get<GetAnswerByIdQueryHandler>(
+				QUIZZ_TAKER_TOKENS.GET_ANSWER_BY_ID_QUERY_HANDLER,
+			);
+			const result = await getAnswerByIdQueryHandler.execute({ props: input });
 
 			return result
 				? {
