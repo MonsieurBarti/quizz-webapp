@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
 	DeleteQuestionCommand,
 	DeleteQuestionCommandHandler,
@@ -10,88 +10,88 @@ import { InMemoryQuizzRepository } from '@quizz-creator/infrastructure/persisten
 import { QuestionBuilder } from '@quizz-creator/domain/question/question.builder';
 import { QuizzBuilder } from '@quizz-creator/domain/quizz/quizz.builder';
 import { QuestionNotFound, UnauthorizedQuestionAccess } from '@quizz-creator/domain/errors/quizz-creator.errors';
-import { Question } from '@quizz-creator/domain/question/question';
+import type { Question } from '@quizz-creator/domain/question/question';
+import type { Quizz } from '@quizz-creator/domain/quizz/quizz';
 
 describe('DeleteQuestionCommandHandler', () => {
 	let questionRepository: InMemoryQuestionRepository;
 	let quizzRepository: InMemoryQuizzRepository;
 	let handler: DeleteQuestionCommandHandler;
-	let questionBuilder: QuestionBuilder;
-	let quizzBuilder: QuizzBuilder;
-	let existingQuestion: Question;
 	const userId = '11111111-1111-1111-1111-111111111111';
 	const differentUserId = '22222222-2222-2222-2222-222222222222';
 
-	beforeEach(async () => {
+	beforeEach(() => {
 		questionRepository = new InMemoryQuestionRepository();
 		quizzRepository = new InMemoryQuizzRepository();
 		handler = new DeleteQuestionCommandHandler(questionRepository, quizzRepository);
-		questionBuilder = new QuestionBuilder();
-		quizzBuilder = new QuizzBuilder();
 
-		const parentQuizz = quizzBuilder.withCreatedBy(userId).build();
-		await quizzRepository.save(parentQuizz);
-
-		existingQuestion = questionBuilder.withQuizzId(parentQuizz.id).build();
-		await questionRepository.save(existingQuestion);
+		vi.spyOn(questionRepository, 'findById');
+		vi.spyOn(questionRepository, 'deleteById');
+		vi.spyOn(quizzRepository, 'findById');
 	});
 
-	it('should delete an existing answer successfully', async () => {
+	async function createQuizz(creatorId: string = userId): Promise<Quizz> {
+		const quizz = new QuizzBuilder().withCreatedBy(creatorId).build();
+		await quizzRepository.save(quizz);
+		return quizz;
+	}
+
+	async function createQuestion(quizzId: string, text: string = 'Test Question'): Promise<Question> {
+		const question = new QuestionBuilder().withQuizzId(quizzId).withText(text).build();
+		await questionRepository.save(question);
+		vi.clearAllMocks(); // Reset call counts after setup
+		return question;
+	}
+
+	function createDeleteCommand(questionId: string, contextUserId: string = userId): DeleteQuestionCommand {
+		const props: DeleteQuestionCommandProps = {
+			id: questionId,
+			context: { userId: contextUserId },
+		};
+		return new DeleteQuestionCommand(props);
+	}
+
+	it('should delete an existing question successfully', async () => {
 		// Arrange
-		const parentQuizz = quizzBuilder.withCreatedBy(userId).build();
-		await quizzRepository.save(parentQuizz);
-		
-		const questionToDelete = questionBuilder.withQuizzId(parentQuizz.id).build();
-		await questionRepository.save(questionToDelete);
+		const parentQuizz = await createQuizz();
+		const questionToDelete = await createQuestion(parentQuizz.id!);
 		expect(await questionRepository.findById({ id: questionToDelete.id! })).toBeDefined(); // Ensure it's there
 
-		const commandProps: DeleteQuestionCommandProps = {
-			id: questionToDelete.id!,
-			context: { userId }
-		};
-		const command = new DeleteQuestionCommand(commandProps);
+		const command = createDeleteCommand(questionToDelete.id!);
 
 		// Act
 		await handler.execute(command);
 
 		// Assert
+		expect(questionRepository.findById).toHaveBeenCalledWith({ id: questionToDelete.id! });
+		expect(quizzRepository.findById).toHaveBeenCalledWith({ id: parentQuizz.id! });
+		expect(questionRepository.deleteById).toHaveBeenCalledWith({ id: questionToDelete.id! });
+
 		const deletedQuestion = await questionRepository.findById({ id: questionToDelete.id! });
 		expect(deletedQuestion).toBeNull();
 	});
 
-	it('should throw QuestionNotFound if the answer to delete does not exist', async () => {
+	it('should throw QuestionNotFound if the question to delete does not exist', async () => {
 		// Arrange
 		const nonExistentQuestionId = '00000000-0000-0000-0000-000000000000';
-		const commandProps: DeleteQuestionCommandProps = {
-			id: nonExistentQuestionId,
-			context: { userId }
-		};
-		const command = new DeleteQuestionCommand(commandProps);
+		const command = createDeleteCommand(nonExistentQuestionId);
 
 		// Act & Assert
 		await expect(handler.execute(command)).rejects.toThrow(QuestionNotFound);
 		await expect(handler.execute(command)).rejects.toThrow(
 			`Question with ID "${nonExistentQuestionId}" not found.`,
 		);
+		expect(questionRepository.deleteById).not.toHaveBeenCalled();
 	});
 
 	it('should throw UnauthorizedQuestionAccess if user is not the owner of the parent quizz', async () => {
 		// Arrange
-		const parentQuizz = quizzBuilder.withCreatedBy(userId).build();
-		await quizzRepository.save(parentQuizz);
-
-		const question = questionBuilder
-			.withQuizzId(parentQuizz.id)
-			.build();
-		await questionRepository.save(question);
-
-		const commandProps: DeleteQuestionCommandProps = {
-			id: question.id!,
-			context: { userId: differentUserId } // Different user trying to delete
-		};
-		const command = new DeleteQuestionCommand(commandProps);
+		const parentQuizz = await createQuizz(userId); // Owned by userId
+		const question = await createQuestion(parentQuizz.id!, 'Question to delete');
+		const command = createDeleteCommand(question.id!, differentUserId); // Different user trying to delete
 
 		// Act & Assert
 		await expect(handler.execute(command)).rejects.toThrow(UnauthorizedQuestionAccess);
+		expect(questionRepository.deleteById).not.toHaveBeenCalled();
 	});
 });

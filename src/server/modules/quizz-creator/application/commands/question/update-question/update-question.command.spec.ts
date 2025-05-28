@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
 	UpdateQuestionCommand,
 	UpdateQuestionCommandHandler,
@@ -10,140 +10,176 @@ import { InMemoryQuizzRepository } from '@quizz-creator/infrastructure/persisten
 import { QuestionBuilder } from '@quizz-creator/domain/question/question.builder';
 import { QuizzBuilder } from '@quizz-creator/domain/quizz/quizz.builder';
 import { QuestionNotFound, UnauthorizedQuestionAccess } from '@quizz-creator/domain/errors/quizz-creator.errors';
-import { Question } from '@quizz-creator/domain/question/question';
+import type { Question } from '@quizz-creator/domain/question/question';
+import type { Quizz } from '@quizz-creator/domain/quizz/quizz';
 
 describe('UpdateQuestionCommandHandler', () => {
 	let questionRepository: InMemoryQuestionRepository;
 	let quizzRepository: InMemoryQuizzRepository;
 	let handler: UpdateQuestionCommandHandler;
-	let questionBuilder: QuestionBuilder;
-	let quizzBuilder: QuizzBuilder;
-	let existingQuestion: Question;
 	const userId = '11111111-1111-1111-1111-111111111111';
 	const differentUserId = '22222222-2222-2222-2222-222222222222';
 
-	beforeEach(async () => {
+	beforeEach(() => {
 		questionRepository = new InMemoryQuestionRepository();
 		quizzRepository = new InMemoryQuizzRepository();
 		handler = new UpdateQuestionCommandHandler(questionRepository, quizzRepository);
-		questionBuilder = new QuestionBuilder();
-		quizzBuilder = new QuizzBuilder();
 
-		const parentQuizz = quizzBuilder.withCreatedBy(userId).build();
-		await quizzRepository.save(parentQuizz);
-
-		existingQuestion = questionBuilder.withQuizzId(parentQuizz.id).build();
-		await questionRepository.save(existingQuestion);
+		vi.spyOn(questionRepository, 'findById');
+		vi.spyOn(questionRepository, 'save');
+		vi.spyOn(quizzRepository, 'findById');
 	});
+
+	async function createQuizz(creatorId: string = userId): Promise<Quizz> {
+		const quizz = new QuizzBuilder()
+			.withCreatedBy(creatorId)
+			.build();
+		await quizzRepository.save(quizz);
+		return quizz;
+	}
+
+	async function createQuestion({
+		quizzId,
+		text = 'Test Question',
+		order = 0,
+		imageUrl = null
+	}: {
+		quizzId: string;
+		text?: string;
+		order?: number;
+		imageUrl?: string | null;
+	}): Promise<Question> {
+		const question = new QuestionBuilder()
+			.withQuizzId(quizzId)
+			.withText(text)
+			.withOrder(order)
+			.withImageUrl(imageUrl)
+			.build();
+		await questionRepository.save(question);
+		vi.clearAllMocks(); // Reset call counts after setup
+		return question;
+	}
+
+	function createUpdateCommand(
+		questionId: string,
+		updates: Partial<Omit<UpdateQuestionCommandProps, 'id' | 'context'>> = {},
+		contextUserId: string = userId
+	): UpdateQuestionCommand {
+		const props: UpdateQuestionCommandProps = {
+			id: questionId,
+			context: { userId: contextUserId },
+			...updates
+		};
+		return new UpdateQuestionCommand(props);
+	}
+
+	async function assertQuestionUpdated(question: Question, expectedValues: Partial<Question>) {
+		const savedQuestion = await questionRepository.findById({ id: question.id! });
+		expect(savedQuestion).toBeDefined();
+		
+		Object.entries(expectedValues).forEach(([key, value]) => {
+			expect(savedQuestion?.[key as keyof Question]).toBe(value);
+		});
+	}
 
 	it('should update an existing question successfully', async () => {
 		// Arrange
-		const parentQuizz = quizzBuilder.withCreatedBy(userId).build();
-		await quizzRepository.save(parentQuizz);
+		const parentQuizz = await createQuizz();
+		const initialQuestion = await createQuestion({
+			quizzId: parentQuizz.id!,
+			text: 'Old text',
+			order: 1,
+			imageUrl: null
+		});
 
-		const initialQuestion = questionBuilder
-			.withText('Old text')
-			.withOrder(1)
-			.withImageUrl(null)
-			.withQuizzId(parentQuizz.id)
-			.build();
-		await questionRepository.save(initialQuestion);
-
-		const updateProps: UpdateQuestionCommandProps = {
-			id: initialQuestion.id!,
+		const updates = {
 			text: 'New updated text',
 			order: 2,
-			imageUrl: 'https://example.com/new-image.jpg',
-			context: { userId }
+			imageUrl: 'https://example.com/new-image.jpg'
 		};
-		const command = new UpdateQuestionCommand(updateProps);
+		const command = createUpdateCommand(initialQuestion.id!, updates);
 
 		// Act
 		const result = await handler.execute(command);
 
 		// Assert
-		expect(result).toBeInstanceOf(Question);
+		expect(questionRepository.findById).toHaveBeenCalledWith({ id: initialQuestion.id! });
+		expect(quizzRepository.findById).toHaveBeenCalledWith({ id: parentQuizz.id! });
+		expect(questionRepository.save).toHaveBeenCalledTimes(1);
+		
 		expect(result.id).toBe(initialQuestion.id);
-		expect(result.text).toBe(updateProps.text);
-		expect(result.order).toBe(updateProps.order);
-		expect(result.imageUrl).toBe(updateProps.imageUrl);
+		expect(result.text).toBe(updates.text);
+		expect(result.order).toBe(updates.order);
+		expect(result.imageUrl).toBe(updates.imageUrl);
 
-		const savedQuestion = await questionRepository.findById({ id: initialQuestion.id! });
-		expect(savedQuestion?.text).toBe(updateProps.text);
-		expect(savedQuestion?.order).toBe(updateProps.order);
-		expect(savedQuestion?.imageUrl).toBe(updateProps.imageUrl);
+		await assertQuestionUpdated(initialQuestion, updates);
 	});
 
 	it('should throw QuestionNotFound if the question to update does not exist', async () => {
 		// Arrange
 		const nonExistentQuestionId = '00000000-0000-0000-0000-000000000000';
-		const commandProps: UpdateQuestionCommandProps = {
-			id: nonExistentQuestionId,
-			text: 'Text for a ghost question',
-			context: { userId }
-		};
-		const command = new UpdateQuestionCommand(commandProps);
+		const command = createUpdateCommand(nonExistentQuestionId, {
+			text: 'Text for a ghost question'
+		});
 
 		// Act & Assert
 		await expect(handler.execute(command)).rejects.toThrow(QuestionNotFound);
 		await expect(handler.execute(command)).rejects.toThrow(
-			`Question with ID "${nonExistentQuestionId}" not found.`,
+			`Question with ID "${nonExistentQuestionId}" not found.`
 		);
+		expect(questionRepository.save).not.toHaveBeenCalled();
 	});
 
-	it('should partially update an question if only some fields are provided', async () => {
+	it('should partially update a question if only some fields are provided', async () => {
 		// Arrange
-		const parentQuizz = quizzBuilder.withCreatedBy(userId).build();
-		await quizzRepository.save(parentQuizz);
+		const parentQuizz = await createQuizz();
+		const initialQuestion = await createQuestion({
+			quizzId: parentQuizz.id!,
+			text: 'Initial Text',
+			order: 0,
+			imageUrl: null
+		});
 
-		const initialQuestion = questionBuilder
-			.withText('Initial Text')
-			.withOrder(0)
-			.withImageUrl(null)
-			.withQuizzId(parentQuizz.id)
-			.build();
-		await questionRepository.save(initialQuestion);
-
-		const partialUpdateProps: UpdateQuestionCommandProps = {
-			id: initialQuestion.id!,
-			text: 'Partially Updated Text',
+		const updates = {
+			text: 'Partially Updated Text'
 			// order and imageUrl are not provided
-			context: { userId }
 		};
-		const command = new UpdateQuestionCommand(partialUpdateProps);
+		const command = createUpdateCommand(initialQuestion.id!, updates);
 
 		// Act
 		const result = await handler.execute(command);
 
 		// Assert
-		expect(result.text).toBe(partialUpdateProps.text);
+		expect(questionRepository.findById).toHaveBeenCalledWith({ id: initialQuestion.id! });
+		expect(questionRepository.save).toHaveBeenCalledTimes(1);
+		
+		expect(result.text).toBe(updates.text);
 		expect(result.order).toBe(initialQuestion.order); // Should remain unchanged
 		expect(result.imageUrl).toBe(initialQuestion.imageUrl); // Should remain unchanged
 
-		const savedQuestion = await questionRepository.findById({ id: initialQuestion.id! });
-		expect(savedQuestion?.text).toBe(partialUpdateProps.text);
-		expect(savedQuestion?.order).toBe(initialQuestion.order);
+		await assertQuestionUpdated(initialQuestion, {
+			text: updates.text,
+			order: initialQuestion.order,
+			imageUrl: initialQuestion.imageUrl
+		});
 	});
 
 	it('should throw UnauthorizedQuestionAccess if user is not the owner of the parent quizz', async () => {
 		// Arrange
-		const parentQuizz = quizzBuilder.withCreatedBy(userId).build();
-		await quizzRepository.save(parentQuizz);
+		const parentQuizz = await createQuizz(userId); // Owned by userId
+		const question = await createQuestion({
+			quizzId: parentQuizz.id!,
+			text: 'Question to update'
+		});
 
-		const question = questionBuilder
-			.withText('Question to update')
-			.withQuizzId(parentQuizz.id)
-			.build();
-		await questionRepository.save(question);
-
-		const updateProps: UpdateQuestionCommandProps = {
-			id: question.id!,
-			text: 'Unauthorized update attempt',
-			context: { userId: differentUserId } // Different user trying to update
-		};
-		const command = new UpdateQuestionCommand(updateProps);
+		const command = createUpdateCommand(
+			question.id!,
+			{ text: 'Unauthorized update attempt' },
+			differentUserId // Different user trying to update
+		);
 
 		// Act & Assert
 		await expect(handler.execute(command)).rejects.toThrow(UnauthorizedQuestionAccess);
+		expect(questionRepository.save).not.toHaveBeenCalled();
 	});
 });

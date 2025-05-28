@@ -7,8 +7,8 @@ export const AttemptProps = z.object({
 	playerId: z.string().uuid(),
 	startedAt: z.date(),
 	completedAt: z.date().nullable(),
-	score: z.number().default(0),
-	totalQuestionsAnswered: z.number().default(0),
+	score: z.number().default(0).optional(),
+	totalQuestionsAnswered: z.number().default(0).optional(),
 });
 
 export type AttemptProps = z.infer<typeof AttemptProps>;
@@ -28,8 +28,8 @@ export class Attempt {
 		this._playerId = props.playerId;
 		this._startedAt = props.startedAt;
 		this._completedAt = props.completedAt;
-		this._score = props.score;
-		this._totalQuestionsAnswered = props.totalQuestionsAnswered;
+		this._score = props.score ?? 0;
+		this._totalQuestionsAnswered = props.totalQuestionsAnswered ?? 0;
 	}
 
 	public static create(props: AttemptProps): Attempt {

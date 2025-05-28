@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
 	CreateQuestionCommand,
 	CreateQuestionCommandHandler,
@@ -11,6 +11,8 @@ import { QuestionBuilder } from '@quizz-creator/domain/question/question.builder
 import { QuizzBuilder } from '@quizz-creator/domain/quizz/quizz.builder';
 import { QuizzNotFound, UnauthorizedQuizzAccess } from '@quizz-creator/domain/errors/quizz-creator.errors';
 import crypto from 'crypto';
+import type { Quizz } from '@quizz-creator/domain/quizz/quizz';
+import type { Question } from '@quizz-creator/domain/question/question';
 
 describe('CreateQuestionCommandHandler', () => {
 	let handler: CreateQuestionCommandHandler;
@@ -23,12 +25,50 @@ describe('CreateQuestionCommandHandler', () => {
 		questionRepository = new InMemoryQuestionRepository();
 		quizzRepository = new InMemoryQuizzRepository();
 		handler = new CreateQuestionCommandHandler(questionRepository, quizzRepository);
+
+		vi.spyOn(questionRepository, 'save');
+		vi.spyOn(questionRepository, 'findById');
+		vi.spyOn(quizzRepository, 'findById');
+		vi.spyOn(quizzRepository, 'save');
 	});
+
+	async function createExistingQuizz(creatorId: string = userId): Promise<Quizz> {
+		const quizz = new QuizzBuilder().withCreatedBy(creatorId).build();
+		await quizzRepository.save(quizz);
+		vi.clearAllMocks(); // Reset call counts after setup
+		return quizz;
+	}
+
+	function createQuestionCommand(
+		quizzId: string,
+		overrides: Partial<Omit<CreateQuestionCommandProps, 'quizzId' | 'context'>> = {},
+		contextUserId: string = userId
+	): CreateQuestionCommand {
+		const defaultProps: CreateQuestionCommandProps = {
+			quizzId,
+			text: 'Default question text',
+			order: 1,
+			imageUrl: null,
+			context: { userId: contextUserId },
+			...overrides,
+		};
+
+		return new CreateQuestionCommand(defaultProps);
+	}
+
+	async function assertQuestionCreated(question: Question) {
+		const savedQuestion = await questionRepository.findById({ id: question.id });
+		expect(savedQuestion).toBeDefined();
+		expect(savedQuestion?.id).toBe(question.id);
+		expect(savedQuestion?.quizzId).toBe(question.quizzId);
+		expect(savedQuestion?.text).toBe(question.text);
+		expect(savedQuestion?.order).toBe(question.order);
+		expect(savedQuestion?.imageUrl).toBe(question.imageUrl);
+	}
 
 	it('should create and save a new question for an existing quizz', async () => {
 		// Arrange
-		const existingQuizz = new QuizzBuilder().withCreatedBy(userId).build();
-		await quizzRepository.save(existingQuizz);
+		const existingQuizz = await createExistingQuizz();
 
 		const questionId = crypto.randomUUID();
 		const builtQuestion = new QuestionBuilder()
@@ -38,89 +78,71 @@ describe('CreateQuestionCommandHandler', () => {
 			.withOrder(1)
 			.build();
 
-		const commandProps: CreateQuestionCommandProps = {
+		const command = createQuestionCommand(existingQuizz.id, {
 			id: builtQuestion.id,
-			quizzId: builtQuestion.quizzId,
 			text: builtQuestion.text,
 			order: builtQuestion.order,
 			imageUrl: builtQuestion.imageUrl,
-			context: { userId }
-		};
-		const command = new CreateQuestionCommand(commandProps);
+		});
 
 		// Act
 		await handler.execute(command);
 
 		// Assert
-		const savedQuestion = await questionRepository.findById({ id: builtQuestion.id });
-		expect(savedQuestion).toBeDefined();
-		expect(savedQuestion).not.toBeNull();
-		expect(savedQuestion?.id).toBe(builtQuestion.id);
-		expect(savedQuestion?.quizzId).toBe(existingQuizz.id);
-		expect(savedQuestion?.text).toBe(builtQuestion.text);
-		expect(savedQuestion?.order).toBe(builtQuestion.order);
-		expect(savedQuestion?.imageUrl).toBe(builtQuestion.imageUrl);
+		expect(quizzRepository.findById).toHaveBeenCalledWith({ id: existingQuizz.id });
+		expect(questionRepository.save).toHaveBeenCalledTimes(1);
+		await assertQuestionCreated(builtQuestion);
 	});
 
 	it('should throw QuizzNotFound error if quizzId does not exist', async () => {
 		// Arrange
 		const nonExistentQuizzId = crypto.randomUUID();
-		const commandProps: CreateQuestionCommandProps = {
-			quizzId: nonExistentQuizzId,
+		const command = createQuestionCommand(nonExistentQuizzId, {
 			text: 'A question for a ghost quizz',
 			order: 0,
-			imageUrl: null,
-			context: { userId }
-		};
-		const command = new CreateQuestionCommand(commandProps);
+		});
 
 		// Act & Assert
 		await expect(handler.execute(command)).rejects.toThrow(new QuizzNotFound(nonExistentQuizzId));
+		expect(questionRepository.save).not.toHaveBeenCalled();
 	});
 
 	it('should create a question with a generated ID if no ID is provided', async () => {
 		// Arrange
-		const existingQuizz = new QuizzBuilder().withCreatedBy(userId).build();
-		await quizzRepository.save(existingQuizz);
-
-		const commandProps: CreateQuestionCommandProps = {
-			// id is omitted
-			quizzId: existingQuizz.id,
+		const existingQuizz = await createExistingQuizz();
+		const command = createQuestionCommand(existingQuizz.id, {
+			// id is intentionally omitted
 			text: 'Question with generated ID',
 			order: 2,
-			imageUrl: null,
-			context: { userId }
-		};
-		const command = new CreateQuestionCommand(commandProps);
+		});
 
 		// Act
 		const createdQuestion = await handler.execute(command);
 
 		// Assert
+		expect(questionRepository.save).toHaveBeenCalledTimes(1);
 		expect(createdQuestion.id).toBeDefined();
 		expect(createdQuestion.id).toHaveLength(36); // UUID length
+		
 		const savedQuestion = await questionRepository.findById({ id: createdQuestion.id });
 		expect(savedQuestion).toBeDefined();
 		expect(savedQuestion?.quizzId).toBe(existingQuizz.id);
-		expect(savedQuestion?.text).toBe(commandProps.text);
+		expect(savedQuestion?.text).toBe('Question with generated ID');
 	});
 
 	it('should throw UnauthorizedQuizzAccess if user is not the owner of the quizz', async () => {
 		// Arrange
-		const existingQuizz = new QuizzBuilder().withCreatedBy(userId).build();
-		await quizzRepository.save(existingQuizz);
-
-		const commandProps: CreateQuestionCommandProps = {
-			quizzId: existingQuizz.id,
+		const existingQuizz = await createExistingQuizz();
+		const command = createQuestionCommand(existingQuizz.id, {
 			text: 'Unauthorized question',
 			order: 1,
-			imageUrl: null,
-			context: { userId: differentUserId } // Different user trying to create a question
-		};
-		const command = new CreateQuestionCommand(commandProps);
+		}, differentUserId); // Different user trying to create a question
 
 		// Act & Assert
 		await expect(handler.execute(command)).rejects.toThrow(UnauthorizedQuizzAccess);
-		await expect(handler.execute(command)).rejects.toThrow(`User ${differentUserId} is not authorized to access quizz ${existingQuizz.id}`);
+		await expect(handler.execute(command)).rejects.toThrow(
+			`User ${differentUserId} is not authorized to access quizz ${existingQuizz.id}`
+		);
+		expect(questionRepository.save).not.toHaveBeenCalled();
 	});
 });
