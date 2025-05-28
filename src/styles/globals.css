@@ -48,12 +48,12 @@
 }
 
 :root {
-	/* Xbox Color Palette */
+	/* Xbox Color Palette - Updated to match official Xbox guidelines */
 	--xbox-green: #107C10;
-	--xbox-light-green: #9BF00B;
-	--dark-gray: #505050;
-	--mid-gray: #737373;
-	--light-gray: #E6E6E6;
+	--xbox-light-green: #81BC06; /* Updated from #9BF00B to match Xbox guidelines */
+	--dark-gray: #222222;     /* Updated from #505050 to match Xbox guidelines */
+	--mid-gray: #737373;      /* Kept as is */
+	--light-gray: #CCCCCC;    /* Updated from #E6E6E6 to match Xbox guidelines */
 	--white: #FFFFFF;
 	--digital-black: #000000;
 	--broadcast-black: #101010;

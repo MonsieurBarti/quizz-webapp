@@ -14,7 +14,7 @@ export class QuestionMapper {
 	static toDomain(raw: QuestionSchemaSelect): Question {
 		const questionProps: QuestionProps = {
 			id: raw.id,
-			quizzId: raw.quizId,
+			quizzId: raw.quizzId,
 			text: raw.text,
 			order: raw.order,
 			imageUrl: raw.imageUrl,
@@ -30,7 +30,7 @@ export class QuestionMapper {
 	static toPersistence(question: Question): QuestionSchemaInsert {
 		const persistenceRecord: QuestionSchemaInsert = {
 			id: question.id,
-			quizId: question.quizzId,
+			quizzId: question.quizzId,
 			text: question.text,
 			order: question.order,
 			imageUrl: question.imageUrl,

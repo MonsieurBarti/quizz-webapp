@@ -2,11 +2,8 @@ import { createTRPCRouter, protectedProcedure } from '@/server/api/trpc';
 import { quizzCreatorContainer } from '../../quizz-creator.container';
 import { QUIZZ_CREATOR_TOKENS } from '../../quizz-creator.tokens';
 import { AnswerOutput, GetAllAnswersQueryProps, GetAnswerByIdQueryProps } from './types';
-import { db } from '@/server/db';
-import { eq } from 'drizzle-orm';
-import { answer } from '@/server/db/schema';
 
-// Answer Command and Query Imports
+// Command Imports
 import {
 	CreateAnswerCommand,
 	CreateAnswerCommandHandler,
@@ -22,6 +19,10 @@ import {
 	DeleteAnswerCommandHandler,
 	DeleteAnswerCommandProps,
 } from '../../application/commands/answer/delete-answer/delete-answer.command';
+
+// Query Imports
+import { GetAllAnswersQuery, GetAllAnswersQueryHandler } from '../../application/queries/answer/get-all-answers/get-all-answers.query';
+import { GetAnswerByIdQuery, GetAnswerByIdQueryHandler } from '../../application/queries/answer/get-answer-by-id/get-answer-by-id.query';
 
 export const answerRouter = createTRPCRouter({
 	createAnswer: protectedProcedure
@@ -85,7 +86,12 @@ export const answerRouter = createTRPCRouter({
 		.input(GetAllAnswersQueryProps)
 		.output(AnswerOutput.array())
 		.query(async ({ input }) => {
-			const results = await db.query.answer.findMany({ where: eq(answer.questionId, input.questionId) });
+			const getAllAnswersQueryHandler = quizzCreatorContainer.get<GetAllAnswersQueryHandler>(
+				QUIZZ_CREATOR_TOKENS.GET_ALL_ANSWERS_QUERY_HANDLER
+			);
+
+			const query = new GetAllAnswersQuery({ questionId: input.questionId });
+			const results = await getAllAnswersQueryHandler.execute(query);
 
 			return results.map(answer => ({
 				id: answer.id,
@@ -100,17 +106,27 @@ export const answerRouter = createTRPCRouter({
 		.input(GetAnswerByIdQueryProps)
 		.output(AnswerOutput.nullable())
 		.query(async ({ input }) => {
-			const result = await db.query.answer.findFirst({ where: eq(answer.id, input.id) });
+			const getAnswerByIdQueryHandler = quizzCreatorContainer.get<GetAnswerByIdQueryHandler>(
+				QUIZZ_CREATOR_TOKENS.GET_ANSWER_BY_ID_QUERY_HANDLER
+			);
 
-			return result
-				? {
-						id: result.id,
-						questionId: result.questionId,
-						text: result.text,
-						isCorrect: result.isCorrect,
-						order: result.order,
-						nextQuestionId: result.nextQuestionId,
-				  }
-				: null;
+			try {
+				const query = new GetAnswerByIdQuery({ id: input.id });
+				const result = await getAnswerByIdQueryHandler.execute(query);
+
+				return {
+					id: result.id,
+					questionId: result.questionId,
+					text: result.text,
+					isCorrect: result.isCorrect,
+					order: result.order,
+					nextQuestionId: result.nextQuestionId,
+				};
+			} catch (error) {
+				if (error instanceof Error && error.name === 'AnswerNotFound') {
+					return null;
+				}
+				throw error;
+			}
 		}),
 });

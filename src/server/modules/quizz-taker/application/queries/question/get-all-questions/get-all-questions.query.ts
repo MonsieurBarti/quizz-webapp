@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { inject, injectable } from 'inversify';
-import { QUIZZ_TAKER_TOKENS } from '@quizz-taker/quizz-taker.tokens';
-import type { QuestionReader } from '@quizz-taker/domain/question/question.reader';
-import type { Question } from '@quizz-taker/domain/question/question';
+import { injectable } from 'inversify';
+import { db } from '@/server/db';
+import { eq } from 'drizzle-orm';
+import { question } from '@/server/db/schema';
 
 export const GetAllQuestionsQueryProps = z.object({
 	quizzId: z.string().uuid(),
@@ -16,12 +16,10 @@ export class GetAllQuestionsQuery {
 
 @injectable()
 export class GetAllQuestionsQueryHandler {
-	constructor(
-		@inject(QUIZZ_TAKER_TOKENS.QUESTION_READER)
-		private readonly questionReader: QuestionReader,
-	) {}
-
-	public async execute({ props }: GetAllQuestionsQuery): Promise<Question[]> {
-		return this.questionReader.findByQuizzId({ quizzId: props.quizzId });
+	public async execute({ props }: GetAllQuestionsQuery) {
+		const results = await db.query.question.findMany({
+			where: eq(question.quizzId, props.quizzId),
+		});
+		return results;
 	}
 }

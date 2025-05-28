@@ -1,4 +1,5 @@
 import { quizzCreatorRouter } from '../modules/quizz-creator/presentation/quizz-creator';
+import { quizzTakerRouter } from '../modules/quizz-taker/presentation/quizz-taker';
 import { createCallerFactory, createTRPCRouter } from '@/server/api/trpc';
 
 /**
@@ -8,6 +9,7 @@ import { createCallerFactory, createTRPCRouter } from '@/server/api/trpc';
  */
 export const appRouter = createTRPCRouter({
 	quizzCreator: quizzCreatorRouter,
+	quizzTaker: quizzTakerRouter,
 });
 
 // export type definition of API

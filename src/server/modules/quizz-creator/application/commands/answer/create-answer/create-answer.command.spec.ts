@@ -1,5 +1,7 @@
 import 'reflect-metadata';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { CreateAnswerCommand, CreateAnswerCommandHandler, CreateAnswerCommandProps } from './create-answer.command';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { InMemoryAnswerRepository } from '@quizz-creator/infrastructure/persistence/answer/in-memory-answer.repository';
 import { InMemoryQuestionRepository } from '@quizz-creator/infrastructure/persistence/question/in-memory-question.repository';
 import { InMemoryQuizzRepository } from '@quizz-creator/infrastructure/persistence/quizz/in-memory-quizz.repository';

@@ -3,6 +3,7 @@ import { quizzCreatorContainer } from '../../quizz-creator.container';
 import { QUIZZ_CREATOR_TOKENS } from '../../quizz-creator.tokens';
 import { GetQuizzByIdQueryProps, QuizzOutput } from './types';
 
+// Command imports
 import {
 	CreateQuizzCommand,
 	CreateQuizzCommandHandler,
@@ -18,9 +19,10 @@ import {
 	DeleteQuizzCommandHandler,
 	DeleteQuizzCommandProps,
 } from '../../application/commands/quizz/delete-quizz/delete-quizz.command';
-import { db } from '@/server/db';
-import { and, eq } from 'drizzle-orm';
-import { quizz } from '@/server/db/schema';
+
+// Query imports
+import { GetAllQuizzQuery, GetAllQuizzQueryHandler } from '../../application/queries/quizz/get-all-quizz/get-all-quizz.query';
+import { GetQuizzByIdQuery, GetQuizzByIdQueryHandler } from '../../application/queries/quizz/get-quizz-by-id/get-quizz-by-id.query';
 
 export const quizzRouter = createTRPCRouter({
 	createQuizz: protectedProcedure
@@ -43,7 +45,7 @@ export const quizzRouter = createTRPCRouter({
 			};
 		}),
 	updateQuizz: protectedProcedure
-		.input(UpdateQuizzCommandProps)
+		.input(UpdateQuizzCommandProps.omit({ context: true }))
 		.output(QuizzOutput)
 		.mutation(async ({ input, ctx }) => {
 			const updateQuizzCommandHandler = quizzCreatorContainer.get<UpdateQuizzCommandHandler>(
@@ -64,19 +66,27 @@ export const quizzRouter = createTRPCRouter({
 				createdBy: quizz.createdBy,
 			};
 		}),
-	deleteQuizz: protectedProcedure.input(DeleteQuizzCommandProps).mutation(async ({ input, ctx }) => {
-		const deleteQuizzCommandHandler = quizzCreatorContainer.get<DeleteQuizzCommandHandler>(
-			QUIZZ_CREATOR_TOKENS.DELETE_QUIZZ_COMMAND_HANDLER,
+	deleteQuizz: protectedProcedure
+		.input(DeleteQuizzCommandProps.omit({ context: true }))
+		.mutation(async ({ input, ctx }) => {
+			const deleteQuizzCommandHandler = quizzCreatorContainer.get<DeleteQuizzCommandHandler>(
+				QUIZZ_CREATOR_TOKENS.DELETE_QUIZZ_COMMAND_HANDLER,
+			);
+
+			const command = new DeleteQuizzCommand({
+				...input,
+				context: { userId: ctx.session.user.id },
+			});
+			await deleteQuizzCommandHandler.execute(command);
+		}),
+	getAllQuizz: protectedProcedure.output(QuizzOutput.array()).query(async ({ ctx }) => {
+		const getAllQuizzQueryHandler = quizzCreatorContainer.get<GetAllQuizzQueryHandler>(
+			QUIZZ_CREATOR_TOKENS.GET_ALL_QUIZZ_QUERY_HANDLER
 		);
 
-		const command = new DeleteQuizzCommand({
-			...input,
-			context: { userId: ctx.session.user.id },
-		});
-		await deleteQuizzCommandHandler.execute(command);
-	}),
-	getAllQuizz: protectedProcedure.output(QuizzOutput.array()).query(async ({ ctx }) => {
-		const results = await db.query.quizz.findMany({ where: eq(quizz.createdBy, ctx.session.user.id) });
+		const query = new GetAllQuizzQuery({ userId: ctx.session.user.id });
+		const results = await getAllQuizzQueryHandler.execute(query);
+
 		return results.map(quizz => ({
 			id: quizz.id,
 			title: quizz.title,
@@ -89,18 +99,26 @@ export const quizzRouter = createTRPCRouter({
 		.input(GetQuizzByIdQueryProps)
 		.output(QuizzOutput.nullable())
 		.query(async ({ input, ctx }) => {
-			const result = await db.query.quizz.findFirst({
-				where: and(eq(quizz.id, input.id), eq(quizz.createdBy, ctx.session.user.id)),
-			});
+			const getQuizzByIdQueryHandler = quizzCreatorContainer.get<GetQuizzByIdQueryHandler>(
+				QUIZZ_CREATOR_TOKENS.GET_QUIZZ_BY_ID_QUERY_HANDLER
+			);
 
-			return result
-				? {
-						id: result.id,
-						title: result.title,
-						description: result.description,
-						isPublished: result.isPublished,
-						createdBy: result.createdBy,
-				  }
-				: null;
+			try {
+				const query = new GetQuizzByIdQuery({ id: input.id, userId: ctx.session.user.id });
+				const result = await getQuizzByIdQueryHandler.execute(query);
+
+				return {
+					id: result.id,
+					title: result.title,
+					description: result.description,
+					isPublished: result.isPublished,
+					createdBy: result.createdBy,
+				};
+			} catch (error) {
+				if (error instanceof Error && error.name === 'QuizzNotFound') {
+					return null;
+				}
+				throw error;
+			}
 		}),
 });

@@ -3,7 +3,7 @@ import { quizzCreatorContainer } from '../../quizz-creator.container';
 import { QUIZZ_CREATOR_TOKENS } from '../../quizz-creator.tokens';
 import { GetAllQuestionsQueryProps, GetQuestionByIdQueryProps, QuestionOutput } from './types';
 
-// Question Command and Query Imports
+// Command Imports
 import {
 	CreateQuestionCommand,
 	CreateQuestionCommandHandler,
@@ -19,9 +19,10 @@ import {
 	DeleteQuestionCommandHandler,
 	DeleteQuestionCommandProps,
 } from '../../application/commands/question/delete-question/delete-question.command';
-import { db } from '@/server/db';
-import { eq } from 'drizzle-orm';
-import { question } from '@/server/db/schema';
+
+// Query Imports
+import { GetAllQuestionsQuery, GetAllQuestionsQueryHandler } from '../../application/queries/question/get-all-questions/get-all-questions.query';
+import { GetQuestionByIdQuery, GetQuestionByIdQueryHandler } from '../../application/queries/question/get-question-by-id/get-question-by-id.query';
 
 export const questionRouter = createTRPCRouter({
 	createQuestion: protectedProcedure
@@ -83,10 +84,12 @@ export const questionRouter = createTRPCRouter({
 		.input(GetAllQuestionsQueryProps)
 		.output(QuestionOutput.array())
 		.query(async ({ input }) => {
-			const results = await db.query.question.findMany({
-				where: eq(question.quizzId, input.quizzId),
-				orderBy: (questions, { asc }) => [asc(questions.order)],
-			});
+			const getAllQuestionsQueryHandler = quizzCreatorContainer.get<GetAllQuestionsQueryHandler>(
+				QUIZZ_CREATOR_TOKENS.GET_ALL_QUESTIONS_QUERY_HANDLER
+			);
+
+			const query = new GetAllQuestionsQuery({ quizzId: input.quizzId });
+			const results = await getAllQuestionsQueryHandler.execute(query);
 
 			return results.map(question => ({
 				id: question.id,
@@ -100,17 +103,26 @@ export const questionRouter = createTRPCRouter({
 		.input(GetQuestionByIdQueryProps)
 		.output(QuestionOutput.nullable())
 		.query(async ({ input }) => {
-			const result = await db.query.question.findFirst({
-				where: eq(question.id, input.id),
-			});
-			return result
-				? {
-						id: result.id,
-						quizzId: result.quizzId,
-						text: result.text,
-						order: result.order,
-						imageUrl: result.imageUrl,
-				  }
-				: null;
+			const getQuestionByIdQueryHandler = quizzCreatorContainer.get<GetQuestionByIdQueryHandler>(
+				QUIZZ_CREATOR_TOKENS.GET_QUESTION_BY_ID_QUERY_HANDLER
+			);
+
+			try {
+				const query = new GetQuestionByIdQuery({ id: input.id });
+				const result = await getQuestionByIdQueryHandler.execute(query);
+
+				return {
+					id: result.id,
+					quizzId: result.quizzId,
+					text: result.text,
+					order: result.order,
+					imageUrl: result.imageUrl,
+				};
+			} catch (error) {
+				if (error instanceof Error && error.name === 'QuestionNotFound') {
+					return null;
+				}
+				throw error;
+			}
 		}),
 });

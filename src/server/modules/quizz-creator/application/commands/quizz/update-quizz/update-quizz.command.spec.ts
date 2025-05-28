@@ -1,5 +1,7 @@
 import 'reflect-metadata';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { UpdateQuizzCommand, UpdateQuizzCommandHandler, UpdateQuizzCommandProps } from './update-quizz.command';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { InMemoryQuizzRepository } from '@quizz-creator/infrastructure/persistence/quizz/in-memory-quizz.repository';
 import { QuizzBuilder } from '@quizz-creator/domain/quizz/quizz.builder';
 import { QuizzNotFound, UnauthorizedQuizzAccess } from '@quizz-creator/domain/errors/quizz-creator.errors';

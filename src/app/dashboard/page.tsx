@@ -23,6 +23,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -48,9 +49,10 @@ export default function DashboardPage() {
 
 	// State for Edit Quiz Dialog
 	const [isEditQuizDialogOpen, setIsEditQuizDialogOpen] = useState(false);
-	const [quizToEdit, setQuizToEdit] = useState<QuizzOutput | null>(null); 
+	const [quizToEdit, setQuizToEdit] = useState<QuizzOutput | null>(null);
 	const [editQuizTitle, setEditQuizTitle] = useState('');
 	const [editQuizDescription, setEditQuizDescription] = useState('');
+	const [editQuizIsPublished, setEditQuizIsPublished] = useState(false);
 
 	// State for Delete Quiz Confirmation
 	const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -120,18 +122,13 @@ export default function DashboardPage() {
 
 	const handleUpdateQuizSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
-		if (!quizToEdit) {
-			toast.error('No quiz selected for editing.');
-			return;
-		}
-		if (!editQuizTitle.trim()) {
-			toast.error('Title is required.');
-			return;
-		}
+		if (!quizToEdit) return;
+
 		updateQuizMutation.mutate({
 			id: quizToEdit.id,
 			title: editQuizTitle,
-			description: editQuizDescription,
+			description: editQuizDescription || undefined,
+			isPublished: editQuizIsPublished,
 		});
 	};
 
@@ -240,6 +237,7 @@ export default function DashboardPage() {
 												setQuizToEdit(quiz);
 												setEditQuizTitle(quiz.title);
 												setEditQuizDescription(quiz.description || '');
+												setEditQuizIsPublished(quiz.isPublished);
 												setIsEditQuizDialogOpen(true);
 											}}
 										>
@@ -299,6 +297,25 @@ export default function DashboardPage() {
 									placeholder='Optional: A brief description of your quiz'
 								/>
 							</div>
+							<div className='grid grid-cols-4 items-center gap-4'>
+								<Label htmlFor='edit-published' className='text-right'>
+									Published
+								</Label>
+								<div className='col-span-3 flex items-center space-x-2'>
+									<Switch
+										id='edit-published'
+										checked={editQuizIsPublished}
+										onCheckedChange={setEditQuizIsPublished}
+									/>
+									<span
+										className={`text-sm ${
+											editQuizIsPublished ? 'text-green-500' : 'text-yellow-500'
+										}`}
+									>
+										{editQuizIsPublished ? 'Published' : 'Draft'}
+									</span>
+								</div>
+							</div>
 						</div>
 						<DialogFooter>
 							<Button type='button' variant={'outline'} onClick={() => setIsEditQuizDialogOpen(false)}>
@@ -318,14 +335,17 @@ export default function DashboardPage() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
 						<AlertDialogDescription>
-							This action cannot be undone. This will permanently delete the quiz and all its associated questions and answers.
+							This action cannot be undone. This will permanently delete the quiz and all its associated
+							questions and answers.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
-						<AlertDialogCancel onClick={() => {
-							setIsDeleteConfirmOpen(false);
-							setQuizToDeleteId(null);
-						}}>
+						<AlertDialogCancel
+							onClick={() => {
+								setIsDeleteConfirmOpen(false);
+								setQuizToDeleteId(null);
+							}}
+						>
 							Cancel
 						</AlertDialogCancel>
 						<AlertDialogAction onClick={handleDeleteQuizConfirm} disabled={deleteQuizMutation.isPending}>

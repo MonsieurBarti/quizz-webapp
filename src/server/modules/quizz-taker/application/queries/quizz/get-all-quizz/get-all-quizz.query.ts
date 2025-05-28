@@ -1,27 +1,24 @@
 import { z } from 'zod';
-import { inject, injectable } from 'inversify';
-import { QUIZZ_TAKER_TOKENS } from '@quizz-taker/quizz-taker.tokens';
-import type { QuizzReader } from '@quizz-taker/domain/quizz/quizz.reader';
-import type { Quizz } from '@quizz-taker/domain/quizz/quizz';
+import { injectable } from 'inversify';
+import { db } from '@/server/db';
+import { eq } from 'drizzle-orm';
+import { quizz } from '@/server/db/schema';
 
-export const GetAllQuizzQueryProps = z.object({
-	createdBy: z.string().uuid().nullable(),
-});
+export const GetAllQuizzQueryProps = z.void();
 
 export type GetAllQuizzQueryProps = z.infer<typeof GetAllQuizzQueryProps>;
 
 export class GetAllQuizzQuery {
-	constructor(public readonly props: GetAllQuizzQueryProps) {}
+	constructor(public readonly _props: GetAllQuizzQueryProps) {}
 }
 
 @injectable()
 export class GetAllQuizzQueryHandler {
-	constructor(
-		@inject(QUIZZ_TAKER_TOKENS.QUIZZ_READER)
-		private readonly quizzReader: QuizzReader,
-	) {}
-
-	public async execute({ props }: GetAllQuizzQuery): Promise<Quizz[]> {
-		return this.quizzReader.findAll({ createdBy: props.createdBy });
+	public async execute() {
+		const results = await db.query.quizz.findMany({
+			where: eq(quizz.isPublished, true),
+			with: { createdBy: { columns: { name: true } } },
+		});
+		return results;
 	}
 }
