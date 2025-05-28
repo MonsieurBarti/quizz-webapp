@@ -6,7 +6,7 @@ export const QuestionOutput = z.object({
 	text: z.string(),
 	order: z.number().int(),
 	imageUrl: z.string().nullable(),
-	updatedAt: z.date(),
+	updatedAt: z.coerce.date(),
 });
 export type QuestionOutput = z.infer<typeof QuestionOutput>;
 
