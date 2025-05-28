@@ -5,7 +5,7 @@ export const QuizzOutput = z.object({
 	title: z.string(),
 	description: z.string().nullable(),
 	createdBy: z.string(),
-	updatedAt: z.date(),
+	updatedAt: z.coerce.date(),
 });
 export type QuizzOutput = z.infer<typeof QuizzOutput>;
 

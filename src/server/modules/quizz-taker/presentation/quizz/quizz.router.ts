@@ -29,15 +29,15 @@ export const quizzRouter = createTRPCRouter({
 				QUIZZ_TAKER_TOKENS.GET_QUIZZ_BY_ID_QUERY_HANDLER,
 			);
 
-			const result = await getQuizzByIdQueryHandler.execute({ props: input });
+			const quizz = await getQuizzByIdQueryHandler.execute({ props: input });
 
-			return result
+			return quizz
 				? {
-						id: result.id,
-						title: result.title,
-						description: result.description,
-						createdBy: result.createdBy.name ?? 'Unknown',
-						updatedAt: result.updatedAt,
+						id: quizz.id,
+						title: quizz.title,
+						description: quizz.description,
+						createdBy: quizz.createdBy.name ?? 'Unknown',
+						updatedAt: quizz.updatedAt,
 				  }
 				: null;
 		}),

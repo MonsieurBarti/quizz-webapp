@@ -5,8 +5,8 @@ export const AttemptProps = z.object({
 	id: z.string().uuid().nullable().optional(),
 	quizzId: z.string().uuid(),
 	playerId: z.string().uuid(),
-	startedAt: z.date(),
-	completedAt: z.date().nullable(),
+	startedAt: z.coerce.date(),
+	completedAt: z.coerce.date().nullable(),
 	score: z.number().default(0).optional(),
 	totalQuestionsAnswered: z.number().default(0).optional(),
 });

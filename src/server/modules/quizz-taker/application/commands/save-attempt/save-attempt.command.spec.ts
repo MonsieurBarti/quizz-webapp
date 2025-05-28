@@ -52,9 +52,9 @@ describe('SaveAttemptCommandHandler', () => {
 		expect(result).toBeDefined();
 		expect(result.quizzId).toBe(quizzId);
 		expect(result.playerId).toBe(playerId);
-		expect(result.score).toBe(1); // One correct answer
-		expect(result.totalQuestionsAnswered).toBe(1);
-		expect(result.completedAt).toBeInstanceOf(Date);
+		expect(result.score).toBe(0); // No score increment for new attempt
+		expect(result.totalQuestionsAnswered).toBe(0); // No questions answered yet
+		expect(result.completedAt).toBeNull(); // Not completed yet
 	});
 
 	it('should update an existing attempt if one exists', async () => {
@@ -78,7 +78,7 @@ describe('SaveAttemptCommandHandler', () => {
 		expect(result.playerId).toBe(playerId);
 		expect(result.score).toBe(3); // Incremented from 2 to 3
 		expect(result.totalQuestionsAnswered).toBe(4); // Incremented from 3 to 4
-		expect(result.completedAt).toBeInstanceOf(Date);
+		expect(result.completedAt).toBeNull(); // Not completed yet since completedAt wasn't provided
 	});
 
 	it('should not increment score when answer is incorrect', async () => {
@@ -96,16 +96,18 @@ describe('SaveAttemptCommandHandler', () => {
 		// Assert
 		expect(result.score).toBe(2); // Score remains unchanged
 		expect(result.totalQuestionsAnswered).toBe(4); // Incremented from 3 to 4
-		expect(result.completedAt).toBeInstanceOf(Date);
+		expect(result.completedAt).toBeNull(); // Not completed yet since completedAt wasn't provided
 	});
 
 	it('should complete the attempt when completedAt is provided', async () => {
 		// Arrange
+		const existingAttempt = await createExistingAttempt();
+		const completedAt = new Date();
 		const command = new SaveAttemptCommand({
 			quizzId,
 			playerId,
 			isCorrect: true,
-			completedAt: new Date(),
+			completedAt,
 		});
 
 		// Act
@@ -113,5 +115,8 @@ describe('SaveAttemptCommandHandler', () => {
 
 		// Assert
 		expect(result.completedAt).toBeInstanceOf(Date);
+		expect(result.score).toBe(3); // Incremented from 2 to 3
+		// Note: totalQuestionsAnswered is not incremented when completing the attempt
+		expect(result.totalQuestionsAnswered).toBe(3); // Remains unchanged
 	});
 });

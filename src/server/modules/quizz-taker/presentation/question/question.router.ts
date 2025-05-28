@@ -11,37 +11,21 @@ export const questionRouter = createTRPCRouter({
 		.output(QuestionOutput.array())
 		.query(async ({ input }) => {
 			const getAllQuestionsQueryHandler = quizzTakerContainer.get<GetAllQuestionsQueryHandler>(
-				QUIZZ_TAKER_TOKENS.GET_ALL_QUIZZ_QUERY_HANDLER,
+				QUIZZ_TAKER_TOKENS.GET_ALL_QUESTIONS_QUERY_HANDLER,
 			);
 			const results = await getAllQuestionsQueryHandler.execute({ props: input });
 
-			return results.map(question => ({
-				id: question.id,
-				quizzId: question.quizzId,
-				text: question.text,
-				order: question.order,
-				imageUrl: question.imageUrl,
-				updatedAt: question.updatedAt,
-			}));
+			return results;
 		}),
 	getQuestionById: publicProcedure
 		.input(GetQuestionByIdQueryProps)
 		.output(QuestionOutput.nullable())
 		.query(async ({ input }) => {
 			const getQuestionByIdQueryHandler = quizzTakerContainer.get<GetQuestionByIdQueryHandler>(
-				QUIZZ_TAKER_TOKENS.GET_QUIZZ_BY_ID_QUERY_HANDLER,
+				QUIZZ_TAKER_TOKENS.GET_QUESTION_BY_ID_QUERY_HANDLER,
 			);
 			const result = await getQuestionByIdQueryHandler.execute({ props: input });
 
-			return result
-				? {
-						id: result.id,
-						quizzId: result.quizzId,
-						text: result.text,
-						order: result.order,
-						imageUrl: result.imageUrl,
-						updatedAt: result.updatedAt,
-				  }
-				: null;
+			return result;
 		}),
 });

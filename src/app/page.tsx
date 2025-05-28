@@ -68,10 +68,16 @@ export default function Home() {
 							</div>
 
 							{session && (
-								<div className='mt-8'>
-									<Link href='/admin' passHref>
+								<div className='mt-8 flex gap-4'>
+									<Link href='/dashboard' passHref>
 										<Button variant='outline' className='gap-1'>
-											Admin Portal
+											Dashboard
+											<ArrowRight className='h-4 w-4' />
+										</Button>
+									</Link>
+									<Link href='/quizz' passHref>
+										<Button className='gap-1'>
+											Take Quizzes
 											<ArrowRight className='h-4 w-4' />
 										</Button>
 									</Link>

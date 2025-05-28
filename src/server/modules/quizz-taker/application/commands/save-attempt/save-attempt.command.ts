@@ -8,8 +8,8 @@ import { Attempt } from '@quizz-taker/domain/attempt/attempt';
 export const SaveAttemptCommandProps = z.object({
 	quizzId: z.string().uuid(),
 	playerId: z.string().uuid(),
-	completedAt: z.date().optional(),
-	isCorrect: z.boolean(),
+	completedAt: z.coerce.date().optional(),
+	isCorrect: z.boolean().optional(),
 });
 
 export type SaveAttemptCommandProps = z.infer<typeof SaveAttemptCommandProps>;
@@ -38,13 +38,18 @@ export class SaveAttemptCommandHandler {
 				startedAt: new Date(),
 				completedAt: null,
 			});
+		} else {
+			if (props.isCorrect) {
+				attempt.incrementScore();
+			}
+			if (props.completedAt) {
+				attempt.complete();
+			} else {
+				attempt.incrementTotalQuestionsAnswered();
+			}
 		}
-		if (props.isCorrect) {
-			attempt.incrementScore();
-		}
-		attempt.incrementTotalQuestionsAnswered();
-		attempt.complete();
 		await this.attemptRepository.save(attempt);
+
 		return attempt;
 	}
 }

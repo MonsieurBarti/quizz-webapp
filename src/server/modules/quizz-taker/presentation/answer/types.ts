@@ -4,7 +4,7 @@ export const AnswerOutput = z.object({
 	id: z.string().uuid(),
 	text: z.string(),
 	order: z.number().int(),
-	updatedAt: z.date(),
+	updatedAt: z.coerce.date(),
 });
 export type AnswerOutput = z.infer<typeof AnswerOutput>;
 
